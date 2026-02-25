@@ -1,4 +1,3 @@
-
 package com.restify.courierapp
 
 import android.annotation.SuppressLint
@@ -14,15 +13,11 @@ import android.os.Looper
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.google.android.gms.location.*
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 
 class LocationTracker : Service() {
 
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private lateinit var locationCallback: LocationCallback
-    private val serviceScope = CoroutineScope(Dispatchers.IO)
 
     // ID для нашого сповіщення
     private val NOTIFICATION_CHANNEL_ID = "courier_location_channel"
@@ -64,19 +59,12 @@ class LocationTracker : Service() {
     }
 
     private fun sendLocationToServer(lat: Double, lon: Double) {
-        val sharedPref = getSharedPreferences("CourierPrefs", Context.MODE_PRIVATE)
-        val cookie = sharedPref.getString("cookie", null)
-
-        if (cookie != null) {
-            serviceScope.launch {
-                try {
-                    // Відправляємо координати на твій FastAPI
-                    RetrofitClient.apiService.sendLocation(cookie, lat, lon)
-                    Log.d("LocationTracker", "Відправлено GPS: $lat, $lon")
-                } catch (e: Exception) {
-                    Log.e("LocationTracker", "Помилка відправки GPS: ${e.message}")
-                }
-            }
+        try {
+            // --- НОВОЕ: Відправляємо координати через швидкий WebSocket замість REST API ---
+            RetrofitClient.webSocketManager.sendLocation(lat, lon)
+            Log.d("LocationTracker", "Відправлено GPS через WS: $lat, $lon")
+        } catch (e: Exception) {
+            Log.e("LocationTracker", "Помилка відправки GPS через WS: ${e.message}")
         }
     }
 

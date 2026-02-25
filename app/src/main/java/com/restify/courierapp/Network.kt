@@ -1,9 +1,16 @@
 package com.restify.courierapp
 
+import android.util.Log
 import com.google.gson.annotations.SerializedName
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
 import okhttp3.ResponseBody
-import retrofit2.Response
+import okhttp3.WebSocket
+import okhttp3.WebSocketListener
+import org.json.JSONObject
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import retrofit2.http.*
@@ -84,7 +91,7 @@ interface ApiService {
     suspend fun login(
         @Field("phone") phone: String,
         @Field("password") password: String
-    ): Response<ResponseBody>
+    ): retrofit2.Response<ResponseBody>
 
     // СПИСОК СВОБОДНЫХ ЗАКАЗОВ
     @GET("/api/courier/open_orders")
@@ -106,7 +113,7 @@ interface ApiService {
     suspend fun acceptOrder(
         @Header("Cookie") cookie: String,
         @Field("job_id") jobId: Int
-    ): Response<StatusResponse>
+    ): retrofit2.Response<StatusResponse>
 
     // ПРИБЫЛ В ЗАКЛАД
     @FormUrlEncoded
@@ -148,7 +155,7 @@ interface ApiService {
         @Header("Cookie") cookie: String
     ): ResponseBody
 
-    // --- МЕТОДЫ ЧАТА (Исправлены пути и параметры) ---
+    // --- МЕТОДЫ ЧАТА ---
 
     // ПОЛУЧИТЬ ИСТОРИЮ ЧАТА ПО ID ЗАКАЗА
     @GET("/api/chat/history/{job_id}")
@@ -163,13 +170,77 @@ interface ApiService {
     suspend fun sendChatMessage(
         @Header("Cookie") cookie: String,
         @Field("job_id") jobId: Int,
-        @Field("message") message: String, // В app.py поле называется "message"
-        @Field("role") role: String = "courier" // Указываем роль отправителя
+        @Field("message") message: String,
+        @Field("role") role: String = "courier"
     ): SendMessageResponse
 }
 
 // ==========================================
-// 3. КЛИЕНТ RETROFIT (Singleton)
+// 3. МЕНЕДЖЕР WEBSOCKET
+// ==========================================
+
+class WebSocketManager(private val client: OkHttpClient) {
+    private var webSocket: WebSocket? = null
+
+    // Flow для прослушивания входящих сообщений (JSON строк) в UI
+    private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 10)
+    val messages = _messages.asSharedFlow()
+
+    fun connect(cookie: String) {
+        // Убедитесь, что используете правильный домен и протокол (wss:// для https)
+        // Если ваш сервер на http://, используйте ws://
+        val request = Request.Builder()
+            .url("wss://restify.site/ws/courier")
+            .addHeader("Cookie", cookie) // Сервер ожидает куки для авторизации
+            .build()
+
+        webSocket = client.newWebSocket(request, object : WebSocketListener() {
+            override fun onOpen(webSocket: WebSocket, response: Response) {
+                Log.d("WebSocket", "Connected")
+            }
+
+            override fun onMessage(webSocket: WebSocket, text: String) {
+                Log.d("WebSocket", "Message received: $text")
+                // Отправляем сообщение в Flow (игнорируем простые "pong")
+                if (text != "pong") {
+                    _messages.tryEmit(text)
+                }
+            }
+
+            override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                Log.d("WebSocket", "Closed: $reason")
+            }
+
+            override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                Log.e("WebSocket", "Error", t)
+                // Опционально: здесь можно добавить логику переподключения (reconnect)
+            }
+        })
+    }
+
+    // Отправка GPS координат (как ожидает бэкенд)
+    fun sendLocation(lat: Double, lon: Double) {
+        val json = JSONObject().apply {
+            put("type", "init_location")
+            put("lat", lat)
+            put("lon", lon)
+        }
+        webSocket?.send(json.toString())
+    }
+
+    // Отправка пинга для поддержания соединения
+    fun sendPing() {
+        webSocket?.send(JSONObject().apply { put("type", "ping") }.toString())
+    }
+
+    fun disconnect() {
+        webSocket?.close(1000, "App closed/Logout")
+        webSocket = null
+    }
+}
+
+// ==========================================
+// 4. КЛИЕНТ RETROFIT (Singleton)
 // ==========================================
 
 object RetrofitClient {
@@ -188,4 +259,7 @@ object RetrofitClient {
             .build()
             .create(ApiService::class.java)
     }
+
+    // Наш новый WebSocket менеджер, использующий тот же OkHttpClient
+    val webSocketManager = WebSocketManager(okHttpClient)
 }

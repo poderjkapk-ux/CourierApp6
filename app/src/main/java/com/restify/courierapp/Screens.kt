@@ -2,6 +2,7 @@ package com.restify.courierapp
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -20,12 +21,14 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Place
 import androidx.compose.material3.*
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
@@ -35,17 +38,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import org.osmdroid.tileprovider.tilesource.TileSourceFactory
-import org.osmdroid.util.GeoPoint
-import org.osmdroid.views.MapView
-import org.osmdroid.views.overlay.Marker
+import org.json.JSONObject
+import androidx.compose.ui.text.style.TextAlign
 
 // ==========================================
 // 0. ДИЗАЙН-СИСТЕМА (Цвета и Кастомные Компоненты)
@@ -62,6 +60,7 @@ object AppColors {
     val Error = Color(0xFFE53935)
     val ChatBubbleSelf = Color(0xFFE3F2FD)
     val ChatBubbleOther = Color(0xFFF5F6F8)
+    val Inactive = Color(0xFFB0BEC5)
 }
 
 // Кастомная кнопка с градиентом или сплошным цветом
@@ -130,22 +129,27 @@ fun ModernTextField(
 
 // Элемент списка с иконкой для адресов
 @Composable
-fun AddressItem(icon: ImageVector, text: String, label: String? = null) {
+fun AddressItem(icon: ImageVector, text: String, label: String? = null, isCompleted: Boolean = false) {
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
         Box(
             modifier = Modifier
                 .size(36.dp)
-                .background(AppColors.Background, CircleShape),
+                .background(if (isCompleted) AppColors.Secondary.copy(alpha = 0.2f) else AppColors.Background, CircleShape),
             contentAlignment = Alignment.Center
         ) {
-            Icon(icon, contentDescription = null, tint = AppColors.Primary, modifier = Modifier.size(20.dp))
+            Icon(
+                if (isCompleted) Icons.Rounded.CheckCircle else icon,
+                contentDescription = null,
+                tint = if (isCompleted) AppColors.Secondary else AppColors.Primary,
+                modifier = Modifier.size(20.dp)
+            )
         }
         Spacer(modifier = Modifier.width(12.dp))
         Column {
             if (label != null) {
                 Text(label, fontSize = 12.sp, color = AppColors.TextSecondary)
             }
-            Text(text, fontSize = 15.sp, color = AppColors.TextPrimary, lineHeight = 20.sp)
+            Text(text, fontSize = 15.sp, color = AppColors.TextPrimary, lineHeight = 20.sp, fontWeight = FontWeight.Medium)
         }
     }
 }
@@ -167,7 +171,6 @@ fun LoginScreen(
             .fillMaxSize()
             .background(AppColors.Background)
     ) {
-        // Верхняя декоративная часть
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -189,7 +192,6 @@ fun LoginScreen(
             )
         }
 
-        // Карточка входа
         Card(
             modifier = Modifier
                 .align(Alignment.TopCenter)
@@ -324,7 +326,6 @@ fun OrderCard(order: OpenOrder, onAcceptClick: (Int) -> Unit) {
         colors = CardDefaults.cardColors(containerColor = AppColors.Surface)
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
-            // Заголовок: Ресторан и Цена
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -343,17 +344,14 @@ fun OrderCard(order: OpenOrder, onAcceptClick: (Int) -> Unit) {
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Адреса
             AddressItem(icon = Icons.Default.LocationOn, text = order.restaurantAddress, label = "Забрати")
             Spacer(modifier = Modifier.height(12.dp))
-            // Рисуем пунктирную линию между точками
             Box(modifier = Modifier.padding(start = 17.dp).height(12.dp).width(2.dp).background(Color.LightGray))
             Spacer(modifier = Modifier.height(12.dp))
             AddressItem(icon = Icons.Default.Home, text = order.dropoffAddress, label = "Доставити")
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // Доп. инфо и кнопка
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (order.distTrip != null) {
                     Text("~${order.distTrip}", fontSize = 13.sp, color = AppColors.TextSecondary, modifier = Modifier.weight(1f))
@@ -373,7 +371,7 @@ fun OrderCard(order: OpenOrder, onAcceptClick: (Int) -> Unit) {
 }
 
 // ==========================================
-// 3. ЭКРАН АКТИВНОГО ЗАКАЗА (Active Order)
+// 3. ЭКРАН АКТИВНОГО ЗАКАЗА (Пошаговый UI)
 // ==========================================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -385,7 +383,8 @@ fun ActiveOrderScreen(
     onRefresh: () -> Unit
 ) {
     var selectedTabIndex by remember { mutableIntStateOf(0) }
-    val tabs = listOf("Деталі", "Карта", "Чат")
+    // Прибрали карту з вкладок, залишили тільки Замовлення і Чат
+    val tabs = listOf("Деталі", "Чат")
 
     Scaffold(
         containerColor = AppColors.Background,
@@ -404,7 +403,6 @@ fun ActiveOrderScreen(
                     }
                 )
 
-                // Кастомный TabRow
                 TabRow(
                     selectedTabIndex = selectedTabIndex,
                     containerColor = AppColors.Surface,
@@ -438,159 +436,241 @@ fun ActiveOrderScreen(
     ) { padding ->
         Box(modifier = Modifier.padding(padding).fillMaxSize().background(AppColors.Background)) {
             when (selectedTabIndex) {
-                0 -> OrderDetailsView(job, onArrivedPickup, onUpdateStatus)
-                1 -> OsmMapView(job.customerLat, job.customerLon)
-                2 -> ChatView(job.id, cookie)
+                0 -> OrderStepperView(job, onArrivedPickup, onUpdateStatus) // Новий покроковий вигляд
+                1 -> ChatView(job.id, cookie)
             }
         }
     }
 }
 
-// Вспомогательные функции для статусов
+// Тексти статусів
 fun getStatusText(status: String): String = when(status) {
-    "assigned" -> "Прямуйте до закладу"
-    "arrived_pickup" -> "Очікуйте видачі"
-    "ready" -> "Замовлення готове!"
-    "picked_up" -> "Прямуйте до клієнта"
-    "returning" -> "Повернення коштів"
+    "assigned" -> "КРОК 1: Прямуйте до закладу"
+    "arrived_pickup" -> "Очікуйте видачі замовлення"
+    "ready" -> "Замовлення готове! Забирайте."
+    "picked_up" -> "КРОК 2: Прямуйте до клієнта"
+    "returning" -> "КРОК 3: Поверніть кошти в заклад"
     else -> status
 }
 
 fun getStatusColor(status: String): Color = when(status) {
     "assigned", "picked_up" -> AppColors.Primary
     "ready" -> AppColors.Secondary
+    "returning" -> Color(0xFFE65100)
     else -> AppColors.TextSecondary
 }
 
-// --- ПОД-ЭКРАН: ДЕТАЛИ ---
+// --- ПОД-ЭКРАН: ПОШАГОВЫЕ ДЕТАЛИ ЗАКАЗА ---
 @Composable
-fun OrderDetailsView(
+fun OrderStepperView(
     job: ActiveJobDetail,
     onArrivedPickup: (Int) -> Unit,
     onUpdateStatus: (Int, String) -> Unit
 ) {
     val context = LocalContext.current
+
+    // Функція для відкриття Google Maps
+    val openGoogleMaps = { address: String, lat: Double?, lon: Double? ->
+        val uri = if (lat != null && lon != null) {
+            // Якщо є координати, будуємо точний маршрут
+            Uri.parse("google.navigation:q=$lat,$lon")
+        } else {
+            // Якщо тільки адреса, шукаємо по адресі
+            Uri.parse("google.navigation:q=${Uri.encode(address)}")
+        }
+        val intent = Intent(Intent.ACTION_VIEW, uri)
+        intent.setPackage("com.google.android.apps.maps")
+        if (intent.resolveActivity(context.packageManager) != null) {
+            context.startActivity(intent)
+        } else {
+            // Фолбек, якщо Google Maps не встановлено (відкриє браузер)
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/maps/dir/?api=1&destination=${Uri.encode(address)}")))
+        }
+    }
+
+    // Визначаємо поточний етап
+    val isStep1Active = job.serverStatus == "assigned" || job.serverStatus == "arrived_pickup" || job.serverStatus == "ready"
+    val isStep1Done = job.serverStatus == "picked_up" || job.serverStatus == "delivered" || job.serverStatus == "returning"
+
+    val isStep2Active = job.serverStatus == "picked_up"
+    val isStep2Done = job.serverStatus == "delivered" || job.serverStatus == "returning"
+
     Column(modifier = Modifier.fillMaxSize()) {
-        Column(modifier = Modifier
-            .weight(1f)
-            .padding(16.dp)
+
+        // --- ФІНАНСОВИЙ БЛОК (Завжди зверху) ---
+        Card(
+            modifier = Modifier.fillMaxWidth().padding(16.dp).shadow(2.dp, RoundedCornerShape(12.dp)),
+            colors = CardDefaults.cardColors(containerColor = AppColors.Surface)
         ) {
-            // Карточка Заведения
-            Card(
-                modifier = Modifier.fillMaxWidth().shadow(2.dp, RoundedCornerShape(16.dp)),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = AppColors.Surface)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("ЗАКЛАД", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = AppColors.TextSecondary)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(job.partnerName, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = AppColors.TextPrimary)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    AddressItem(icon = Icons.Default.LocationOn, text = job.partnerAddress)
+            Row(modifier = Modifier.fillMaxWidth().padding(16.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Column {
+                    Text("Ваш дохід:", color = AppColors.TextSecondary, fontSize = 14.sp)
+                    Text("${job.deliveryFee} ₴", fontWeight = FontWeight.Black, color = AppColors.Secondary, fontSize = 22.sp)
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text("Чек клієнта:", color = AppColors.TextSecondary, fontSize = 14.sp)
+                    Text("${job.orderPrice} ₴", fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 }
             }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Карточка Клиента
-            Card(
-                modifier = Modifier.fillMaxWidth().shadow(2.dp, RoundedCornerShape(16.dp)),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = AppColors.Surface)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("КЛІЄНТ", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = AppColors.TextSecondary)
-                        // Кнопка звонка
-                        Card(
-                            shape = CircleShape,
-                            colors = CardDefaults.cardColors(containerColor = AppColors.Primary.copy(alpha = 0.1f)),
-                            modifier = Modifier.clickable {
-                                val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${job.customerPhone}"))
-                                context.startActivity(intent)
-                            }
-                        ) {
-                            Icon(Icons.Default.Call, contentDescription = "Call", tint = AppColors.Primary, modifier = Modifier.padding(8.dp).size(20.dp))
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(job.customerName ?: "Ім'я не вказано", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = AppColors.TextPrimary)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    AddressItem(icon = Icons.Default.Home, text = job.customerAddress)
-
-                    if (!job.comment.isNullOrEmpty()) {
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(Color(0xFFFFF8E1), RoundedCornerShape(8.dp))
-                                .border(1.dp, Color(0xFFFFE0B2), RoundedCornerShape(8.dp))
-                                .padding(12.dp)
-                        ) {
-                            Text("Коментар: ${job.comment}", fontSize = 14.sp, color = Color(0xFFE65100))
-                        }
-                    }
+            if (!job.comment.isNullOrEmpty()) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().background(Color(0xFFFFF8E1)).padding(12.dp)
+                ) {
+                    Text("Коментар/Оплата: ${job.comment}", fontSize = 14.sp, color = Color(0xFFE65100), fontWeight = FontWeight.Medium)
                 }
             }
-            Spacer(modifier = Modifier.weight(1f))
-
-            // Финансовый блок
-            Row(modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Сума замовлення:", color = AppColors.TextSecondary)
-                Text("${job.orderPrice} ₴", fontWeight = FontWeight.Bold)
-            }
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Ваш дохід:", color = AppColors.TextSecondary, fontSize = 16.sp)
-                Text("${job.deliveryFee} ₴", fontWeight = FontWeight.Black, color = AppColors.Secondary, fontSize = 20.sp)
-            }
-
         }
 
-        // Кнопка действия на всю ширину внизу
-        Box(modifier = Modifier
-            .fillMaxWidth()
-            .background(AppColors.Surface)
-            .shadow(8.dp)
-            .padding(16.dp)) {
+        // --- КРОКИ (STEPPER) ---
+        LazyColumn(
+            modifier = Modifier.weight(1f).padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
 
+            // КРОК 1: ЗАКЛАД
+            item {
+                StepCard(
+                    stepNumber = "1",
+                    title = "Забрати в закладі",
+                    name = job.partnerName,
+                    address = job.partnerAddress,
+                    isActive = isStep1Active,
+                    isCompleted = isStep1Done,
+                    icon = Icons.Default.LocationOn,
+                    onNavigateClick = { openGoogleMaps(job.partnerAddress, null, null) }
+                )
+            }
+
+            // КРОК 2: КЛІЄНТ
+            item {
+                StepCard(
+                    stepNumber = "2",
+                    title = "Доставити клієнту",
+                    name = job.customerName ?: "Ім'я не вказано",
+                    address = job.customerAddress,
+                    phone = job.customerPhone,
+                    isActive = isStep2Active,
+                    isCompleted = isStep2Done,
+                    icon = Icons.Default.Home,
+                    onNavigateClick = { openGoogleMaps(job.customerAddress, job.customerLat, job.customerLon) },
+                    onCallClick = {
+                        val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${job.customerPhone}"))
+                        context.startActivity(intent)
+                    }
+                )
+            }
+
+            // Якщо потрібно повернути кошти
+            if (job.isReturnRequired && isStep2Done) {
+                item {
+                    StepCard(
+                        stepNumber = "3",
+                        title = "Повернення коштів",
+                        name = "Повернути готівку в заклад",
+                        address = job.partnerAddress,
+                        isActive = job.serverStatus == "returning",
+                        isCompleted = false,
+                        icon = Icons.Default.ArrowForward,
+                        onNavigateClick = { openGoogleMaps(job.partnerAddress, null, null) }
+                    )
+                }
+            }
+        }
+
+        // --- ГОЛОВНА КНОПКА ДІЇ (Внизу екрану) ---
+        Box(modifier = Modifier.fillMaxWidth().background(AppColors.Surface).shadow(8.dp).padding(16.dp)) {
             when (job.serverStatus) {
-                "assigned" -> ModernButton("Я в закладі", { onArrivedPickup(job.id) }, Modifier.fillMaxWidth(), backgroundColor = AppColors.Primary)
-                "arrived_pickup", "ready" -> ModernButton("Забрав замовлення", { onUpdateStatus(job.id, "picked_up") }, Modifier.fillMaxWidth(), backgroundColor = AppColors.Secondary)
+                "assigned" -> ModernButton("Я прибув у заклад", { onArrivedPickup(job.id) }, Modifier.fillMaxWidth(), backgroundColor = AppColors.Primary)
+                "arrived_pickup", "ready" -> ModernButton("Забрав пакунок", { onUpdateStatus(job.id, "picked_up") }, Modifier.fillMaxWidth(), backgroundColor = AppColors.Secondary)
                 "picked_up" -> ModernButton("Успішно доставлено", { onUpdateStatus(job.id, "delivered") }, Modifier.fillMaxWidth(), backgroundColor = AppColors.Secondary)
-                "returning" -> Text("Очікування підтвердження повернення...", modifier = Modifier.align(Alignment.Center), color = AppColors.TextSecondary)
+                "returning" -> Text("Очікуйте, поки заклад підтвердить отримання коштів...", modifier = Modifier.align(Alignment.Center).padding(8.dp), color = AppColors.TextSecondary, textAlign = TextAlign.Center)
             }
         }
     }
 }
 
-// --- ПОД-ЭКРАН: КАРТА (OSM) ---
-// Оставляем функционально как было, но меняем контейнер
+// Віджет для відображення картки одного кроку
 @Composable
-fun OsmMapView(lat: Double?, lon: Double?) {
-    if (lat == null || lon == null) {
-        Box(Modifier.fillMaxSize().background(AppColors.Background), contentAlignment = Alignment.Center) { Text("Координати відсутні", color = AppColors.TextSecondary) }
-        return
-    }
-    AndroidView(
-        factory = { context ->
-            MapView(context).apply {
-                setTileSource(TileSourceFactory.MAPNIK)
-                setMultiTouchControls(true)
-                controller.setZoom(18.0)
-                val point = GeoPoint(lat, lon)
-                controller.setCenter(point)
+fun StepCard(
+    stepNumber: String,
+    title: String,
+    name: String,
+    address: String,
+    isActive: Boolean,
+    isCompleted: Boolean,
+    icon: ImageVector,
+    phone: String? = null,
+    onNavigateClick: () -> Unit,
+    onCallClick: (() -> Unit)? = null
+) {
+    // Якщо крок ще не активний і не завершений, він напівпрозорий
+    val cardAlpha = if (isActive || isCompleted) 1f else 0.5f
+    val borderColor = if (isActive) AppColors.Primary else if (isCompleted) AppColors.Secondary else Color.Transparent
 
-                val marker = Marker(this)
-                marker.position = point
-                marker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_BOTTOM)
-                marker.title = "Клієнт"
-                // Можно заменить иконку маркера на кастомную здесь
-                overlays.add(marker)
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .alpha(cardAlpha)
+            .border(BorderStroke(if (isActive) 2.dp else 0.dp, borderColor), RoundedCornerShape(16.dp))
+            .shadow(if (isActive) 6.dp else 2.dp, RoundedCornerShape(16.dp)),
+        colors = CardDefaults.cardColors(containerColor = AppColors.Surface)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            // Заголовок кроку
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier.size(24.dp).background(if (isCompleted) AppColors.Secondary else if (isActive) AppColors.Primary else AppColors.Inactive, CircleShape),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (isCompleted) {
+                        Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                    } else {
+                        Text(stepNumber, color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(title, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = if (isActive) AppColors.Primary else AppColors.TextSecondary)
             }
-        },
-        modifier = Modifier.fillMaxSize()
-    )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Інформація (Ім'я, Телефон)
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text(name, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = AppColors.TextPrimary)
+
+                if (phone != null && onCallClick != null && (isActive || isCompleted)) {
+                    Card(
+                        shape = CircleShape,
+                        colors = CardDefaults.cardColors(containerColor = AppColors.Primary.copy(alpha = 0.1f)),
+                        modifier = Modifier.clickable { onCallClick() }
+                    ) {
+                        Icon(Icons.Default.Call, contentDescription = "Call", tint = AppColors.Primary, modifier = Modifier.padding(10.dp).size(20.dp))
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Адреса
+            AddressItem(icon = icon, text = address, isCompleted = isCompleted)
+
+            // Кнопка навігації (тільки для активного кроку)
+            if (isActive) {
+                Spacer(modifier = Modifier.height(16.dp))
+                OutlinedButton(
+                    onClick = onNavigateClick,
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, AppColors.Primary),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = AppColors.Primary)
+                ) {
+                    Icon(Icons.Rounded.Place, contentDescription = null, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("🗺 Маршрут у Google Maps", fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
 }
 
 // --- ПОД-ЭКРАН: ЧАТ ---
@@ -601,10 +681,29 @@ fun ChatView(jobId: Int, cookie: String) {
     val scope = rememberCoroutineScope()
     var isSending by remember { mutableStateOf(false) }
 
+    // 1. ЗАВАНТАЖУЄМО ІСТОРІЮ ЧАТУ ОДИН РАЗ ПРИ СТАРТІ
     LaunchedEffect(Unit) {
-        while (true) {
-            try { messages = RetrofitClient.apiService.getChatMessages(cookie, jobId) } catch (e: Exception) {}
-            delay(3000)
+        try {
+            messages = RetrofitClient.apiService.getChatMessages(cookie, jobId)
+        } catch (e: Exception) {}
+    }
+
+    // 2. СЛУХАЄМО НОВІ ПОВІДОМЛЕННЯ ЧЕРЕЗ WEBSOCKET (МИТТЄВО)
+    LaunchedEffect(Unit) {
+        RetrofitClient.webSocketManager.messages.collect { messageJson ->
+            try {
+                val json = JSONObject(messageJson)
+                if (json.optString("type") == "chat_message" && json.optInt("job_id") == jobId) {
+                    val newMessage = ChatMessage(
+                        role = json.optString("role"),
+                        text = json.optString("text"),
+                        time = json.optString("time")
+                    )
+                    messages = messages + newMessage
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 
@@ -676,8 +775,10 @@ fun ChatView(jobId: Int, cookie: String) {
                             scope.launch {
                                 try {
                                     RetrofitClient.apiService.sendChatMessage(cookie, jobId, textToSend, "courier")
-                                    messages = RetrofitClient.apiService.getChatMessages(cookie, jobId)
-                                } catch (e: Exception) {} finally { isSending = false }
+                                } catch (e: Exception) {
+                                } finally {
+                                    isSending = false
+                                }
                             }
                         }
                     },

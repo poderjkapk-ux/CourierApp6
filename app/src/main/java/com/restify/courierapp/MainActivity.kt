@@ -20,6 +20,7 @@ import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 import org.osmdroid.config.Configuration
 
 class MainActivity : ComponentActivity() {
@@ -52,6 +53,20 @@ class MainActivity : ComponentActivity() {
                     val navController = rememberNavController()
                     val coroutineScope = rememberCoroutineScope()
                     val savedCookie = sharedPref.getString("cookie", null)
+
+                    // --- НОВЕ: Управління життєвим циклом WebSocket ---
+                    LaunchedEffect(Unit) {
+                        if (savedCookie != null) {
+                            RetrofitClient.webSocketManager.connect(savedCookie)
+                        }
+                    }
+
+                    DisposableEffect(Unit) {
+                        onDispose {
+                            RetrofitClient.webSocketManager.disconnect()
+                        }
+                    }
+                    // ---------------------------------------------------
 
                     // БЛОК ЗАПИТУ ДОЗВОЛІВ (GPS та Сповіщення)
                     val permissionsToRequest = mutableListOf(
@@ -99,6 +114,10 @@ class MainActivity : ComponentActivity() {
                                                 if (tokenCookie != null) {
                                                     val cookieValue = tokenCookie.split(";")[0]
                                                     sharedPref.edit().putString("cookie", cookieValue).apply()
+
+                                                    // --- НОВЕ: Підключаємо WebSocket одразу після успішного входу ---
+                                                    RetrofitClient.webSocketManager.connect(cookieValue)
+                                                    // ----------------------------------------------------------------
 
                                                     FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
                                                         if (task.isSuccessful) {
@@ -163,6 +182,22 @@ class MainActivity : ComponentActivity() {
 
                             LaunchedEffect(Unit) { fetchData() }
 
+                            // --- НОВЕ: Слухаємо WebSocket події для миттєвого оновлення списку ---
+                            LaunchedEffect(Unit) {
+                                RetrofitClient.webSocketManager.messages.collect { messageJson ->
+                                    try {
+                                        val json = JSONObject(messageJson)
+                                        val type = json.getString("type")
+                                        if (type == "new_order" || type == "job_update") {
+                                            fetchData() // Оновлюємо список
+                                        }
+                                    } catch (e: Exception) {
+                                        e.printStackTrace()
+                                    }
+                                }
+                            }
+                            // -----------------------------------------------------------------------
+
                             OrdersListScreen(
                                 orders = ordersList,
                                 isLoading = isLoading,
@@ -205,6 +240,23 @@ class MainActivity : ComponentActivity() {
                             }
 
                             LaunchedEffect(Unit) { fetchActiveJob() }
+
+                            // --- НОВЕ: Слухаємо WebSocket події для оновлення активного замовлення ---
+                            LaunchedEffect(Unit) {
+                                RetrofitClient.webSocketManager.messages.collect { messageJson ->
+                                    try {
+                                        val json = JSONObject(messageJson)
+                                        val type = json.getString("type")
+                                        // Оновлюємо, якщо статус замовлення змінився на сервері
+                                        if (type == "job_update" || type == "job_ready") {
+                                            fetchActiveJob()
+                                        }
+                                    } catch (e: Exception) {
+                                        e.printStackTrace()
+                                    }
+                                }
+                            }
+                            // --------------------------------------------------------------------------
 
                             activeJob?.let { job ->
                                 ActiveOrderScreen(
