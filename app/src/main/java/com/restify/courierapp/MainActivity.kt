@@ -20,10 +20,11 @@ import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.launch
+import org.osmdroid.config.Configuration
 
 class MainActivity : ComponentActivity() {
 
-    // Функция для запуска нашей службы геолокации
+    // Функція для запуску служби геолокації
     private fun startLocationService() {
         val serviceIntent = Intent(this, LocationTracker::class.java)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -37,6 +38,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // Ініціалізація OpenStreetMap (потрібно для відображення карти)
+        Configuration.getInstance().userAgentValue = packageName
+
         val sharedPref = getSharedPreferences("CourierPrefs", Context.MODE_PRIVATE)
 
         setContent {
@@ -49,9 +53,7 @@ class MainActivity : ComponentActivity() {
                     val coroutineScope = rememberCoroutineScope()
                     val savedCookie = sharedPref.getString("cookie", null)
 
-                    // ----------------------------------------------------
-                    // БЛОК ЗАПРОСА РАЗРЕШЕНИЙ (GPS и Уведомления)
-                    // ----------------------------------------------------
+                    // БЛОК ЗАПИТУ ДОЗВОЛІВ (GPS та Сповіщення)
                     val permissionsToRequest = mutableListOf(
                         Manifest.permission.ACCESS_FINE_LOCATION,
                         Manifest.permission.ACCESS_COARSE_LOCATION
@@ -62,12 +64,11 @@ class MainActivity : ComponentActivity() {
 
                     val permissionsState = rememberMultiplePermissionsState(permissions = permissionsToRequest)
 
-                    // Запрашиваем разрешения при старте. Если дали — запускаем службу.
+                    // Запитуємо дозволи при старті
                     LaunchedEffect(permissionsState.allPermissionsGranted) {
                         if (!permissionsState.allPermissionsGranted) {
                             permissionsState.launchMultiplePermissionRequest()
                         } else {
-                            // Разрешения есть. Если курьер залогинен — запускаем слежку
                             if (savedCookie != null) {
                                 startLocationService()
                             }
@@ -78,7 +79,7 @@ class MainActivity : ComponentActivity() {
 
                     NavHost(navController = navController, startDestination = startDestination) {
 
-                        // РОУТ 1: ЛОГИН
+                        // РОУТ 1: ЛОГІН
                         composable("login") {
                             var isLoading by remember { mutableStateOf(false) }
                             var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -99,21 +100,17 @@ class MainActivity : ComponentActivity() {
                                                     val cookieValue = tokenCookie.split(";")[0]
                                                     sharedPref.edit().putString("cookie", cookieValue).apply()
 
-                                                    // Запрашиваем FCM токен и отправляем на сервер
                                                     FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
                                                         if (task.isSuccessful) {
                                                             val token = task.result
                                                             coroutineScope.launch {
                                                                 try {
                                                                     RetrofitClient.apiService.sendFcmToken(cookieValue, token)
-                                                                } catch (e: Exception) {
-                                                                    e.printStackTrace()
-                                                                }
+                                                                } catch (e: Exception) {}
                                                             }
                                                         }
                                                     }
 
-                                                    // После логина запускаем отправку GPS
                                                     if (permissionsState.allPermissionsGranted) {
                                                         startLocationService()
                                                     }
@@ -137,14 +134,11 @@ class MainActivity : ComponentActivity() {
                             )
                         }
 
-                        // РОУТ 2: СПИСОК ЗАКАЗОВ
+                        // РОУТ 2: СПИСОК ЗАМОВЛЕНЬ
                         composable("orders") {
                             var ordersList by remember { mutableStateOf<List<OpenOrder>>(emptyList()) }
                             var isLoading by remember { mutableStateOf(true) }
-
-                            // Состояние статуса курьера (по умолчанию считаем, что он на смене)
                             var isOnline by remember { mutableStateOf(true) }
-
                             val currentCookie = sharedPref.getString("cookie", "") ?: ""
 
                             fun fetchData() {
@@ -174,17 +168,12 @@ class MainActivity : ComponentActivity() {
                                 isLoading = isLoading,
                                 isOnline = isOnline,
                                 onToggleStatus = { newStatus ->
-                                    // Оптимистично меняем UI сразу
                                     isOnline = newStatus
                                     coroutineScope.launch {
                                         try {
                                             RetrofitClient.apiService.toggleStatus(currentCookie)
-                                            val msg = if (newStatus) "Ви вийшли на зміну" else "Ви офлайн (замовлення не надходитимуть)"
-                                            Toast.makeText(this@MainActivity, msg, Toast.LENGTH_SHORT).show()
                                         } catch (e: Exception) {
-                                            // Если сервер выдал ошибку, возвращаем тумблер обратно
                                             isOnline = !newStatus
-                                            Toast.makeText(this@MainActivity, "Помилка зміни статусу", Toast.LENGTH_SHORT).show()
                                         }
                                     }
                                 },
@@ -193,15 +182,14 @@ class MainActivity : ComponentActivity() {
                                     coroutineScope.launch {
                                         try {
                                             val res = RetrofitClient.apiService.acceptOrder(currentCookie, jobId)
-                                            if (res.isSuccessful && res.body()?.status == "ok") fetchData()
-                                            else Toast.makeText(this@MainActivity, "Помилка", Toast.LENGTH_SHORT).show()
+                                            if (res.isSuccessful) fetchData()
                                         } catch (e: Exception) {}
                                     }
                                 }
                             )
                         }
 
-                        // РОУТ 3: АКТИВНЫЙ ЗАКАЗ
+                        // РОУТ 3: АКТИВНЕ ЗАМОВЛЕННЯ (З підтримкою чату та карти)
                         composable("active_order") {
                             var activeJob by remember { mutableStateOf<ActiveJobDetail?>(null) }
                             val currentCookie = sharedPref.getString("cookie", "") ?: ""
@@ -220,7 +208,9 @@ class MainActivity : ComponentActivity() {
 
                             activeJob?.let { job ->
                                 ActiveOrderScreen(
-                                    job = job, onRefresh = { fetchActiveJob() },
+                                    job = job,
+                                    cookie = currentCookie, // Передаємо кукі для чату
+                                    onRefresh = { fetchActiveJob() },
                                     onArrivedPickup = { jobId ->
                                         coroutineScope.launch {
                                             try { RetrofitClient.apiService.arrivedAtPickup(currentCookie, jobId); fetchActiveJob() } catch (e: Exception) {}

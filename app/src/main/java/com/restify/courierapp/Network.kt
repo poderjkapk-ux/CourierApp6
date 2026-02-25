@@ -1,18 +1,12 @@
 package com.restify.courierapp
 
-
 import com.google.gson.annotations.SerializedName
 import okhttp3.OkHttpClient
 import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
-import retrofit2.http.Field
-import retrofit2.http.FormUrlEncoded
-import retrofit2.http.GET
-import retrofit2.http.Header
-import retrofit2.http.POST
-import retrofit2.http.Query
+import retrofit2.http.*
 
 // ==========================================
 // 1. МОДЕЛИ ДАННЫХ (Data Classes)
@@ -60,10 +54,22 @@ data class ActiveJobDetail(
     @SerializedName("is_return_required") val isReturnRequired: Boolean
 )
 
-// Ответ для простых запросов, где статус {"status": "ok"}
+// Ответ для простых запросов
 data class StatusResponse(
     val status: String,
     val message: String? = null
+)
+
+// --- МОДЕЛИ ДЛЯ ЧАТА (Синхронизировано с app.py) ---
+
+data class ChatMessage(
+    @SerializedName("role") val role: String, // "courier" или "partner"
+    @SerializedName("text") val text: String, // Текст сообщения
+    @SerializedName("time") val time: String  // Время в формате HH:mm
+)
+
+data class SendMessageResponse(
+    val status: String
 )
 
 // ==========================================
@@ -72,7 +78,7 @@ data class StatusResponse(
 
 interface ApiService {
 
-    // ЛОГИН. Возвращаем Response<ResponseBody>, чтобы вручную вытащить заголовок Set-Cookie
+    // ЛОГИН
     @FormUrlEncoded
     @POST("/api/courier/login")
     suspend fun login(
@@ -102,7 +108,7 @@ interface ApiService {
         @Field("job_id") jobId: Int
     ): Response<StatusResponse>
 
-    // ПРИБЫЛ В ЗАКЛАД (Ожидает выдачи)
+    // ПРИБЫЛ В ЗАКЛАД
     @FormUrlEncoded
     @POST("/api/courier/arrived_pickup")
     suspend fun arrivedAtPickup(
@@ -128,7 +134,7 @@ interface ApiService {
         @Field("lon") lon: Double
     ): StatusResponse
 
-    // ОТПРАВКА FIREBASE ТОКЕНА ДЛЯ ПУШЕЙ
+    // ОТПРАВКА FIREBASE ТОКЕНА
     @FormUrlEncoded
     @POST("/api/courier/fcm_token")
     suspend fun sendFcmToken(
@@ -136,11 +142,30 @@ interface ApiService {
         @Field("token") token: String
     ): StatusResponse
 
-    // ПЕРЕКЛЮЧИТЬ СТАТУС (На смене / Не на смене)
+    // ПЕРЕКЛЮЧИТЬ СТАТУС ОНЛАЙН/ОФЛАЙН
     @POST("/api/courier/toggle_status")
     suspend fun toggleStatus(
         @Header("Cookie") cookie: String
     ): ResponseBody
+
+    // --- МЕТОДЫ ЧАТА (Исправлены пути и параметры) ---
+
+    // ПОЛУЧИТЬ ИСТОРИЮ ЧАТА ПО ID ЗАКАЗА
+    @GET("/api/chat/history/{job_id}")
+    suspend fun getChatMessages(
+        @Header("Cookie") cookie: String,
+        @Path("job_id") jobId: Int
+    ): List<ChatMessage>
+
+    // ОТПРАВИТЬ СООБЩЕНИЕ В ЧАТ
+    @FormUrlEncoded
+    @POST("/api/chat/send")
+    suspend fun sendChatMessage(
+        @Header("Cookie") cookie: String,
+        @Field("job_id") jobId: Int,
+        @Field("message") message: String, // В app.py поле называется "message"
+        @Field("role") role: String = "courier" // Указываем роль отправителя
+    ): SendMessageResponse
 }
 
 // ==========================================
@@ -148,12 +173,10 @@ interface ApiService {
 // ==========================================
 
 object RetrofitClient {
-    // ЗАМЕНИ НА СВОЙ ДОМЕН (Например: "https://daybergdostavka.com.ua" или "http://192.168.1.100:8001")
-    private const val BASE_URL = "https://restify.site"
+    private const val BASE_URL = "https://restify.site" // Укажите актуальный домен
 
-    // Кастомный клиент с отключенными редиректами (очень важно для твоего /api/courier/login)
     private val okHttpClient = OkHttpClient.Builder()
-        .followRedirects(false)
+        .followRedirects(false) // Важно для обработки кастомной авторизации
         .followSslRedirects(false)
         .build()
 
