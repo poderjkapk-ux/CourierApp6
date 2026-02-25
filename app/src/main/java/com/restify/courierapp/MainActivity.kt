@@ -18,6 +18,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
+import com.google.firebase.messaging.FirebaseMessaging // Додано імпорт Firebase
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -97,6 +98,21 @@ class MainActivity : ComponentActivity() {
                                                 if (tokenCookie != null) {
                                                     val cookieValue = tokenCookie.split(";")[0]
                                                     sharedPref.edit().putString("cookie", cookieValue).apply()
+
+                                                    // === ДОДАНО: Запитуємо FCM токен і відправляємо на сервер ===
+                                                    FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+                                                        if (task.isSuccessful) {
+                                                            val token = task.result
+                                                            coroutineScope.launch {
+                                                                try {
+                                                                    RetrofitClient.apiService.sendFcmToken(cookieValue, token)
+                                                                } catch (e: Exception) {
+                                                                    e.printStackTrace()
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                    // ==============================================================
 
                                                     // После логина запускаем отправку GPS
                                                     if (permissionsState.allPermissionsGranted) {
