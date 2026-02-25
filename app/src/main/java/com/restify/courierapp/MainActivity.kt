@@ -18,7 +18,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
-import com.google.firebase.messaging.FirebaseMessaging // Додано імпорт Firebase
+import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -99,7 +99,7 @@ class MainActivity : ComponentActivity() {
                                                     val cookieValue = tokenCookie.split(";")[0]
                                                     sharedPref.edit().putString("cookie", cookieValue).apply()
 
-                                                    // === ДОДАНО: Запитуємо FCM токен і відправляємо на сервер ===
+                                                    // Запрашиваем FCM токен и отправляем на сервер
                                                     FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
                                                         if (task.isSuccessful) {
                                                             val token = task.result
@@ -112,7 +112,6 @@ class MainActivity : ComponentActivity() {
                                                             }
                                                         }
                                                     }
-                                                    // ==============================================================
 
                                                     // После логина запускаем отправку GPS
                                                     if (permissionsState.allPermissionsGranted) {
@@ -142,6 +141,10 @@ class MainActivity : ComponentActivity() {
                         composable("orders") {
                             var ordersList by remember { mutableStateOf<List<OpenOrder>>(emptyList()) }
                             var isLoading by remember { mutableStateOf(true) }
+
+                            // Состояние статуса курьера (по умолчанию считаем, что он на смене)
+                            var isOnline by remember { mutableStateOf(true) }
+
                             val currentCookie = sharedPref.getString("cookie", "") ?: ""
 
                             fun fetchData() {
@@ -167,7 +170,25 @@ class MainActivity : ComponentActivity() {
                             LaunchedEffect(Unit) { fetchData() }
 
                             OrdersListScreen(
-                                orders = ordersList, isLoading = isLoading, onRefresh = { fetchData() },
+                                orders = ordersList,
+                                isLoading = isLoading,
+                                isOnline = isOnline,
+                                onToggleStatus = { newStatus ->
+                                    // Оптимистично меняем UI сразу
+                                    isOnline = newStatus
+                                    coroutineScope.launch {
+                                        try {
+                                            RetrofitClient.apiService.toggleStatus(currentCookie)
+                                            val msg = if (newStatus) "Ви вийшли на зміну" else "Ви офлайн (замовлення не надходитимуть)"
+                                            Toast.makeText(this@MainActivity, msg, Toast.LENGTH_SHORT).show()
+                                        } catch (e: Exception) {
+                                            // Если сервер выдал ошибку, возвращаем тумблер обратно
+                                            isOnline = !newStatus
+                                            Toast.makeText(this@MainActivity, "Помилка зміни статусу", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                },
+                                onRefresh = { fetchData() },
                                 onAcceptOrder = { jobId ->
                                     coroutineScope.launch {
                                         try {

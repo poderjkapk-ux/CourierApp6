@@ -10,10 +10,13 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -83,12 +86,14 @@ fun LoginScreen(
 }
 
 // ==========================================
-// 2. ЕКРАН ВІЛЬНИХ ЗАМОВЛЕНЬ
+// 2. ЕКРАН ВІЛЬНИХ ЗАМОВЛЕНЬ (ОНОВЛЕНИЙ ДЛЯ COMPOSE 1.3.0+)
 // ==========================================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OrdersListScreen(
     orders: List<OpenOrder>,
+    isOnline: Boolean,
+    onToggleStatus: (Boolean) -> Unit,
     onAcceptOrder: (Int) -> Unit,
     onRefresh: () -> Unit,
     isLoading: Boolean
@@ -96,58 +101,83 @@ fun OrdersListScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Вільні замовлення", fontWeight = FontWeight.Bold) },
+                title = { Text("Замовлення", fontWeight = FontWeight.Bold) },
                 actions = {
-                    IconButton(onClick = onRefresh) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Оновити")
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(end = 8.dp)
+                    ) {
+                        Text(
+                            text = if (isOnline) "На зміні" else "Офлайн",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = if (isOnline) Color(0xFF2E7D32) else Color.Gray,
+                            modifier = Modifier.padding(end = 8.dp)
+                        )
+                        Switch(
+                            checked = isOnline,
+                            onCheckedChange = onToggleStatus,
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = Color(0xFF4CAF50)
+                            )
+                        )
                     }
                 }
             )
         }
     ) { padding ->
-        if (isLoading) {
-            Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
-            }
-        } else if (orders.isEmpty()) {
-            Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                Text("Немає доступних замовлень", color = Color.Gray, fontSize = 18.sp)
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                items(orders) { order ->
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color.White)
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Text("🍽 Заклад: ${order.restaurantName}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                            Text("📍 Звідки: ${order.restaurantAddress}", modifier = Modifier.padding(top = 4.dp))
-                            Text("🏠 Куди: ${order.dropoffAddress}", modifier = Modifier.padding(top = 4.dp))
+        // Використовуємо новий PullToRefreshBox замість старого контейнера
+        PullToRefreshBox(
+            isRefreshing = isLoading,
+            onRefresh = onRefresh,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
+            if (isLoading && orders.isEmpty()) {
+                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+            } else if (orders.isEmpty()) {
+                Text(
+                    "Немає доступних замовлень",
+                    color = Color.Gray,
+                    fontSize = 18.sp,
+                    modifier = Modifier.align(Alignment.Center)
+                )
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    items(orders) { order ->
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White)
+                        ) {
+                            Column(modifier = Modifier.padding(16.dp)) {
+                                Text("🍽 Заклад: ${order.restaurantName}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                                Text("📍 Звідки: ${order.restaurantAddress}", modifier = Modifier.padding(top = 4.dp))
+                                Text("🏠 Куди: ${order.dropoffAddress}", modifier = Modifier.padding(top = 4.dp))
 
-                            Spacer(modifier = Modifier.height(8.dp))
+                                Spacer(modifier = Modifier.height(8.dp))
 
-                            Text("💰 Доставка: ${order.fee} грн", color = Color(0xFF2E7D32), fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                Text("💰 Доставка: ${order.fee} грн", color = Color(0xFF2E7D32), fontWeight = FontWeight.Bold, fontSize = 16.sp)
 
-                            if (!order.comment.isNullOrEmpty()) {
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Text("Коментар: ${order.comment}", color = Color.DarkGray, fontSize = 14.sp)
-                            }
+                                if (!order.comment.isNullOrEmpty()) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text("Коментар: ${order.comment}", color = Color.DarkGray, fontSize = 14.sp)
+                                }
 
-                            Spacer(modifier = Modifier.height(12.dp))
+                                Spacer(modifier = Modifier.height(12.dp))
 
-                            Button(
-                                onClick = { onAcceptOrder(order.id) },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text("Прийняти замовлення")
+                                Button(
+                                    onClick = { onAcceptOrder(order.id) },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("Прийняти замовлення")
+                                }
                             }
                         }
                     }
