@@ -23,12 +23,16 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
         sendTokenToServer(token)
     }
 
-    // Вызывается при получении уведомления, если приложение АКТИВНО (на переднем плане)
+    // Вызывается при получении уведомления
     override fun onMessageReceived(remoteMessage: RemoteMessage) {
         super.onMessageReceived(remoteMessage)
 
-        val title = remoteMessage.notification?.title ?: "Нове сповіщення"
-        val body = remoteMessage.notification?.body ?: ""
+        // Твой бэкенд (FastAPI) отправляет пуши в блоке "data",
+        // поэтому мы берем "title" и "body" именно оттуда!
+        val title = remoteMessage.data["title"] ?: "Нове сповіщення"
+        val body = remoteMessage.data["body"] ?: ""
+
+        Log.d("FCM", "Отримано пуш: Title=$title, Body=$body")
 
         showNotification(title, body)
     }
