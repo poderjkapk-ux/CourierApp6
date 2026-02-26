@@ -15,8 +15,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Refresh
@@ -239,6 +241,7 @@ fun OrdersListScreen(
     onToggleStatus: (Boolean) -> Unit,
     onAcceptOrder: (Int) -> Unit,
     onRefresh: () -> Unit,
+    onNavigateToHistory: () -> Unit,
     isLoading: Boolean
 ) {
     // АВТООБНОВЛЕНИЕ ПРИ ПОЛУЧЕНИИ НОВОГО ЗАКАЗА ЧЕРЕЗ WEBSOCKET
@@ -261,9 +264,12 @@ fun OrdersListScreen(
         containerColor = AppColors.Background,
         topBar = {
             TopAppBar(
-                title = { Text("Доступні замовлення", fontWeight = FontWeight.ExtraBold, fontSize = 24.sp) },
+                title = { Text("Доступні", fontWeight = FontWeight.ExtraBold, fontSize = 24.sp) },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = AppColors.Background, titleContentColor = AppColors.TextPrimary),
                 actions = {
+                    IconButton(onClick = onNavigateToHistory) {
+                        Icon(Icons.Default.DateRange, contentDescription = "Історія", tint = AppColors.Primary)
+                    }
                     Card(
                         shape = RoundedCornerShape(50),
                         colors = CardDefaults.cardColors(containerColor = if (isOnline) AppColors.Secondary.copy(alpha = 0.15f) else AppColors.TextSecondary.copy(alpha = 0.15f)),
@@ -458,7 +464,6 @@ fun OrderDetailsView(
         }
     }
 
-    // ИСПРАВЛЕНИЕ: Явно указан возвращаемый тип () -> Unit
     val handleRefresh: () -> Unit = {
         scope.launch {
             isRefreshing = true
@@ -502,7 +507,6 @@ fun OrderDetailsView(
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
-                // ИСПРАВЛЕНИЕ: Правильно указаны PaddingValues (раздельно top и bottom)
                 contentPadding = PaddingValues(top = 16.dp, bottom = 100.dp)
             ) {
 
@@ -818,6 +822,93 @@ fun ChatView(jobId: Int, cookie: String) {
                         Icon(Icons.Default.Send, contentDescription = "Надіслати", tint = Color.White, modifier = Modifier.size(22.dp).padding(start = 4.dp))
                     }
                 }
+            }
+        }
+    }
+}
+
+// ==========================================
+// 4. ЭКРАН ИСТОРИИ ЗАКАЗОВ (History)
+// ==========================================
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun HistoryScreen(
+    history: List<HistoryOrder>,
+    isLoading: Boolean,
+    onBack: () -> Unit,
+    onRefresh: () -> Unit
+) {
+    Scaffold(
+        containerColor = AppColors.Background,
+        topBar = {
+            TopAppBar(
+                title = { Text("Історія замовлень", fontWeight = FontWeight.ExtraBold, fontSize = 22.sp) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Назад", tint = AppColors.Primary)
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = AppColors.Background)
+            )
+        }
+    ) { padding ->
+        PullToRefreshBox(isRefreshing = isLoading, onRefresh = onRefresh, modifier = Modifier.fillMaxSize().padding(padding)) {
+            if (history.isEmpty() && !isLoading) {
+                Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(Icons.Default.DateRange, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(80.dp))
+                    Spacer(modifier = Modifier.height(20.dp))
+                    Text("Історія порожня", color = AppColors.TextSecondary, fontSize = 18.sp, fontWeight = FontWeight.Medium)
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    items(history) { order -> HistoryOrderCard(order) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun HistoryOrderCard(order: HistoryOrder) {
+    val isDelivered = order.status == "delivered"
+
+    Card(
+        modifier = Modifier.fillMaxWidth().shadow(4.dp, RoundedCornerShape(20.dp), spotColor = Color.Black.copy(alpha = 0.05f)),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = AppColors.Surface)
+    ) {
+        Column(modifier = Modifier.padding(20.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text("Замовлення #${order.id}", fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, color = AppColors.TextPrimary)
+                Text(order.date, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = AppColors.TextSecondary)
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+            AddressItem(icon = Icons.Default.LocationOn, text = order.address)
+
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .background(
+                            if (isDelivered) AppColors.Secondary.copy(alpha = 0.1f) else AppColors.Error.copy(alpha = 0.1f),
+                            RoundedCornerShape(8.dp)
+                        )
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                ) {
+                    Text(
+                        if (isDelivered) "Виконано" else "Скасовано",
+                        color = if (isDelivered) AppColors.Secondary else AppColors.Error,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
+                    )
+                }
+
+                Text("+${order.price} ₴", fontWeight = FontWeight.Black, fontSize = 20.sp, color = if (isDelivered) AppColors.Secondary else AppColors.TextSecondary)
             }
         }
     }

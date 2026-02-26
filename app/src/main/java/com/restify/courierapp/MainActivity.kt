@@ -223,6 +223,9 @@ class MainActivity : ComponentActivity() {
                                 orders = ordersList,
                                 isLoading = isLoading,
                                 isOnline = isOnline,
+                                onNavigateToHistory = {
+                                    navController.navigate("history")
+                                },
                                 onToggleStatus = { newStatus ->
                                     isOnline = newStatus
                                     coroutineScope.launch {
@@ -295,6 +298,35 @@ class MainActivity : ComponentActivity() {
                                     }
                                 )
                             }
+                        }
+
+                        // РОУТ 4: ІСТОРІЯ ЗАМОВЛЕНЬ
+                        composable("history") {
+                            var historyList by remember { mutableStateOf<List<HistoryOrder>>(emptyList()) }
+                            var isLoading by remember { mutableStateOf(true) }
+                            val currentCookie = sharedPref.getString("cookie", "") ?: ""
+
+                            fun fetchHistory() {
+                                isLoading = true
+                                coroutineScope.launch {
+                                    try {
+                                        historyList = RetrofitClient.apiService.getHistory(currentCookie)
+                                    } catch (e: Exception) {
+                                        Toast.makeText(this@MainActivity, "Помилка завантаження історії", Toast.LENGTH_SHORT).show()
+                                    } finally {
+                                        isLoading = false
+                                    }
+                                }
+                            }
+
+                            LaunchedEffect(Unit) { fetchHistory() }
+
+                            HistoryScreen(
+                                history = historyList,
+                                isLoading = isLoading,
+                                onBack = { navController.popBackStack() },
+                                onRefresh = { fetchHistory() }
+                            )
                         }
                     }
                 }
