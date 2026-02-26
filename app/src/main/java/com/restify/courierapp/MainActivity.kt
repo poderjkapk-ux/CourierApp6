@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -54,10 +55,28 @@ class MainActivity : ComponentActivity() {
                     val coroutineScope = rememberCoroutineScope()
                     val savedCookie = sharedPref.getString("cookie", null)
 
-                    // --- НОВЕ: Управління життєвим циклом WebSocket ---
+                    // --- Управління життєвим циклом WebSocket та FCM-токеном ---
                     LaunchedEffect(Unit) {
                         if (savedCookie != null) {
+                            // Підключаємо WebSocket
                             RetrofitClient.webSocketManager.connect(savedCookie)
+
+                            // ОНОВЛЕННЯ: Відправляємо FCM-токен на сервер при кожному старті додатку
+                            FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+                                if (task.isSuccessful) {
+                                    val token = task.result
+                                    coroutineScope.launch {
+                                        try {
+                                            RetrofitClient.apiService.sendFcmToken(savedCookie, token)
+                                            Log.d("FCM_TOKEN", "Токен успішно оновлено при старті: $token")
+                                        } catch (e: Exception) {
+                                            Log.e("FCM_TOKEN", "Помилка відправки токена при старті: ${e.message}")
+                                        }
+                                    }
+                                } else {
+                                    Log.e("FCM_TOKEN", "Не вдалося отримати токен від Firebase", task.exception)
+                                }
+                            }
                         }
                     }
 
@@ -115,17 +134,20 @@ class MainActivity : ComponentActivity() {
                                                     val cookieValue = tokenCookie.split(";")[0]
                                                     sharedPref.edit().putString("cookie", cookieValue).apply()
 
-                                                    // --- НОВЕ: Підключаємо WebSocket одразу після успішного входу ---
+                                                    // Підключаємо WebSocket одразу після успішного входу
                                                     RetrofitClient.webSocketManager.connect(cookieValue)
-                                                    // ----------------------------------------------------------------
 
+                                                    // Відправляємо FCM токен після успішного логіну
                                                     FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
                                                         if (task.isSuccessful) {
                                                             val token = task.result
                                                             coroutineScope.launch {
                                                                 try {
                                                                     RetrofitClient.apiService.sendFcmToken(cookieValue, token)
-                                                                } catch (e: Exception) {}
+                                                                    Log.d("FCM_TOKEN", "Токен успішно відправлено після логіну: $token")
+                                                                } catch (e: Exception) {
+                                                                    Log.e("FCM_TOKEN", "Помилка відправки токена після логіну: ${e.message}")
+                                                                }
                                                             }
                                                         }
                                                     }
@@ -182,7 +204,7 @@ class MainActivity : ComponentActivity() {
 
                             LaunchedEffect(Unit) { fetchData() }
 
-                            // --- НОВЕ: Слухаємо WebSocket події для миттєвого оновлення списку ---
+                            // Слухаємо WebSocket події для миттєвого оновлення списку
                             LaunchedEffect(Unit) {
                                 RetrofitClient.webSocketManager.messages.collect { messageJson ->
                                     try {
@@ -196,7 +218,6 @@ class MainActivity : ComponentActivity() {
                                     }
                                 }
                             }
-                            // -----------------------------------------------------------------------
 
                             OrdersListScreen(
                                 orders = ordersList,
@@ -241,7 +262,7 @@ class MainActivity : ComponentActivity() {
 
                             LaunchedEffect(Unit) { fetchActiveJob() }
 
-                            // --- НОВЕ: Слухаємо WebSocket події для оновлення активного замовлення ---
+                            // Слухаємо WebSocket події для оновлення активного замовлення
                             LaunchedEffect(Unit) {
                                 RetrofitClient.webSocketManager.messages.collect { messageJson ->
                                     try {
@@ -256,7 +277,6 @@ class MainActivity : ComponentActivity() {
                                     }
                                 }
                             }
-                            // --------------------------------------------------------------------------
 
                             activeJob?.let { job ->
                                 ActiveOrderScreen(
