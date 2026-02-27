@@ -301,9 +301,18 @@ fun OrdersListScreen(
     }
 }
 
+// ОБНОВЛЕННАЯ КАРТОЧКА ЗАКАЗА С ИНФОРМАЦИЕЙ О ТИПЕ ОПЛАТЫ И РАССТОЯНИЕМ ДО ЗАВЕДЕНИЯ
 @Composable
 fun OrderCard(order: OpenOrder, onAcceptClick: (Int) -> Unit) {
     var isAccepting by remember { mutableStateOf(false) }
+
+    // Определяем текст и цвет для типа оплаты
+    val paymentInfo = when (order.paymentType) {
+        "prepaid" -> Pair("✅ Оплачено", AppColors.Secondary)
+        "cash" -> Pair("💵 Готівка", AppColors.Warning)
+        "buyout" -> Pair("💰 Викуп", AppColors.Error)
+        else -> Pair(order.paymentType, AppColors.Primary)
+    }
 
     Card(
         modifier = Modifier.fillMaxWidth().shadow(6.dp, RoundedCornerShape(24.dp), spotColor = Color.Black.copy(alpha = 0.05f)),
@@ -311,6 +320,7 @@ fun OrderCard(order: OpenOrder, onAcceptClick: (Int) -> Unit) {
         colors = CardDefaults.cardColors(containerColor = AppColors.Surface)
     ) {
         Column(modifier = Modifier.padding(24.dp)) {
+            // Заголовок (Название и цена)
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(order.restaurantName, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, color = AppColors.TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -320,8 +330,27 @@ fun OrderCard(order: OpenOrder, onAcceptClick: (Int) -> Unit) {
                 }
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
+            // НОВОЕ: Бейджи с информацией (Оплата и Расстояние до заведения)
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Бейдж типа оплаты
+                Box(modifier = Modifier.background(paymentInfo.second.copy(alpha = 0.15f), RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 6.dp)) {
+                    Text(paymentInfo.first, color = paymentInfo.second, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                }
+
+                // Бейдж расстояния до заведения
+                if (order.distToRest != null) {
+                    Box(modifier = Modifier.background(AppColors.Primary.copy(alpha = 0.08f), RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 6.dp)) {
+                        Text("🏃 до закладу ~${order.distToRest} км", color = AppColors.Primary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
+                }
+            }
+
+            // Адреса
             AddressItem(icon = Icons.Default.LocationOn, text = order.restaurantAddress, label = "Забрати")
 
             Box(modifier = Modifier.padding(start = 19.dp, top = 6.dp, bottom = 6.dp).height(20.dp).width(2.dp).background(Color.LightGray.copy(alpha = 0.5f)))
@@ -330,9 +359,10 @@ fun OrderCard(order: OpenOrder, onAcceptClick: (Int) -> Unit) {
 
             Spacer(modifier = Modifier.height(24.dp))
 
+            // Нижняя панель (Расстояние доставки и кнопка)
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (order.distTrip != null) {
-                    Text("📍 ~${order.distTrip} км", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = AppColors.TextSecondary, modifier = Modifier.weight(1f))
+                    Text("📍 Маршрут: ~${order.distTrip} км", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = AppColors.TextSecondary, modifier = Modifier.weight(1f))
                 } else {
                     Spacer(modifier = Modifier.weight(1f))
                 }

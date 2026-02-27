@@ -1,8 +1,10 @@
 package com.restify.courierapp
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
+import android.location.Location
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
@@ -19,12 +21,18 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
+import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationServices
 import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import org.json.JSONObject
 import org.osmdroid.config.Configuration
+import kotlin.coroutines.resume
 
 class MainActivity : ComponentActivity() {
+
+    private lateinit var fusedLocationClient: FusedLocationProviderClient
 
     // Функція для запуску служби геолокації
     private fun startLocationService() {
@@ -36,12 +44,25 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // Допоміжна функція для отримання координат (безпечно для корутин)
+    @SuppressLint("MissingPermission")
+    suspend fun getLastKnownLocation(): Location? {
+        return suspendCancellableCoroutine { cont ->
+            fusedLocationClient.lastLocation
+                .addOnSuccessListener { location -> cont.resume(location) }
+                .addOnFailureListener { cont.resume(null) }
+        }
+    }
+
     @OptIn(ExperimentalPermissionsApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         // Ініціалізація OpenStreetMap (потрібно для відображення карти)
         Configuration.getInstance().userAgentValue = packageName
+
+        // Ініціалізація клієнта геолокації
+        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
 
         val sharedPref = getSharedPreferences("CourierPrefs", Context.MODE_PRIVATE)
 
@@ -193,7 +214,24 @@ class MainActivity : ComponentActivity() {
                                             }
                                             return@launch
                                         }
-                                        ordersList = RetrofitClient.apiService.getOpenOrders(currentCookie, lat = 0.0, lon = 0.0)
+
+                                        // НОВЕ: Отримуємо реальні координати замість 0.0, 0.0
+                                        var currentLat = 0.0
+                                        var currentLon = 0.0
+
+                                        if (permissionsState.allPermissionsGranted) {
+                                            val location = getLastKnownLocation()
+                                            if (location != null) {
+                                                currentLat = location.latitude
+                                                currentLon = location.longitude
+                                            }
+                                        }
+
+                                        ordersList = RetrofitClient.apiService.getOpenOrders(
+                                            currentCookie,
+                                            lat = currentLat,
+                                            lon = currentLon
+                                        )
                                     } catch (e: Exception) {
                                         Toast.makeText(this@MainActivity, "Помилка завантаження", Toast.LENGTH_SHORT).show()
                                     } finally {
@@ -231,6 +269,15 @@ class MainActivity : ComponentActivity() {
                                     coroutineScope.launch {
                                         try {
                                             RetrofitClient.apiService.toggleStatus(currentCookie)
+
+                                            if (newStatus) {
+                                                if (permissionsState.allPermissionsGranted) {
+                                                    startLocationService()
+                                                }
+                                            } else {
+                                                val serviceIntent = Intent(this@MainActivity, LocationTracker::class.java)
+                                                stopService(serviceIntent)
+                                            }
                                         } catch (e: Exception) {
                                             isOnline = !newStatus
                                         }
@@ -248,7 +295,7 @@ class MainActivity : ComponentActivity() {
                             )
                         }
 
-                        // РОУТ 3: АКТИВНЕ ЗАМОВЛЕННЯ (З підтримкою чату та карти)
+                        // РОУТ 3: АКТИВНЕ ЗАМОВЛЕННЯ
                         composable("active_order") {
                             var activeJob by remember { mutableStateOf<ActiveJobDetail?>(null) }
                             val currentCookie = sharedPref.getString("cookie", "") ?: ""
@@ -265,13 +312,11 @@ class MainActivity : ComponentActivity() {
 
                             LaunchedEffect(Unit) { fetchActiveJob() }
 
-                            // Слухаємо WebSocket події для оновлення активного замовлення
                             LaunchedEffect(Unit) {
                                 RetrofitClient.webSocketManager.messages.collect { messageJson ->
                                     try {
                                         val json = JSONObject(messageJson)
                                         val type = json.getString("type")
-                                        // Оновлюємо, якщо статус замовлення змінився на сервері
                                         if (type == "job_update" || type == "job_ready") {
                                             fetchActiveJob()
                                         }
@@ -284,7 +329,7 @@ class MainActivity : ComponentActivity() {
                             activeJob?.let { job ->
                                 ActiveOrderScreen(
                                     job = job,
-                                    cookie = currentCookie, // Передаємо кукі для чату
+                                    cookie = currentCookie,
                                     onRefresh = { fetchActiveJob() },
                                     onArrivedPickup = { jobId ->
                                         coroutineScope.launch {
