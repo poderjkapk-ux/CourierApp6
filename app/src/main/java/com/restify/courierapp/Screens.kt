@@ -3,6 +3,9 @@ package com.restify.courierapp
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -20,6 +23,8 @@ import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Send
@@ -54,14 +59,14 @@ import java.util.Date
 import java.util.Locale
 
 // ==========================================
-// 0. ДИЗАЙН-СИСТЕМА (Цвета и Кастомные Компоненты)
+// 0. ДИЗАЙН-СИСТЕМА (Кольори та Кастомні Компоненти)
 // ==========================================
 
 object AppColors {
-    val Primary = Color(0xFF1E293B) // Глубокий премиальный темный (Dark Slate)
+    val Primary = Color(0xFF1E293B) // Глибокий преміальний темний (Dark Slate)
     val PrimaryDark = Color(0xFF0F172A)
-    val Secondary = Color(0xFF10B981) // Сочный изумрудный
-    val Background = Color(0xFFF8FAFC) // Чистый светло-серый фон
+    val Secondary = Color(0xFF10B981) // Соковитий смарагдовий
+    val Background = Color(0xFFF8FAFC) // Чистий світло-сірий фон
     val Surface = Color.White
     val TextPrimary = Color(0xFF0F172A)
     val TextSecondary = Color(0xFF64748B)
@@ -74,7 +79,7 @@ object AppColors {
     val Inactive = Color(0xFFCBD5E1)
 }
 
-// Кастомная кнопка с градиентом или сплошным цветом
+// Кастомна кнопка з кольором
 @Composable
 fun ModernButton(
     text: String,
@@ -110,7 +115,7 @@ fun ModernButton(
     }
 }
 
-// Кастомное поле ввода
+// Кастомне поле вводу
 @Composable
 fun ModernTextField(
     value: String,
@@ -140,7 +145,7 @@ fun ModernTextField(
     )
 }
 
-// Элемент списка с иконкой для адресов
+// Елемент списку з іконкою для адрес
 @Composable
 fun AddressItem(icon: ImageVector, text: String, label: String? = null) {
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
@@ -163,7 +168,7 @@ fun AddressItem(icon: ImageVector, text: String, label: String? = null) {
 }
 
 // ==========================================
-// 1. ЭКРАН АВТОРИЗАЦИИ (Login Screen)
+// 1. ЕКРАН АВТОРИЗАЦІЇ (Login Screen)
 // ==========================================
 @Composable
 fun LoginScreen(
@@ -231,7 +236,7 @@ fun LoginScreen(
 }
 
 // ==========================================
-// 2. ЭКРАН СПИСКА ЗАКАЗОВ (Orders List)
+// 2. ЕКРАН СПИСКУ ЗАМОВЛЕНЬ (Orders List)
 // ==========================================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -244,7 +249,6 @@ fun OrdersListScreen(
     onNavigateToHistory: () -> Unit,
     isLoading: Boolean
 ) {
-    // АВТООБНОВЛЕНИЕ ПРИ ПОЛУЧЕНИИ НОВОГО ЗАКАЗА ЧЕРЕЗ WEBSOCKET
     LaunchedEffect(Unit) {
         RetrofitClient.webSocketManager.messages.collect { messageJson ->
             try {
@@ -252,7 +256,7 @@ fun OrdersListScreen(
                 val type = json.optString("type")
                 if (type == "new_order" || type == "job_update") {
                     delay(500)
-                    onRefresh() // Викликаємо оновлення списку автоматично
+                    onRefresh()
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
@@ -301,12 +305,12 @@ fun OrdersListScreen(
     }
 }
 
-// ОБНОВЛЕННАЯ КАРТОЧКА ЗАКАЗА С ИНФОРМАЦИЕЙ О ТИПЕ ОПЛАТЫ И РАССТОЯНИЕМ ДО ЗАВЕДЕНИЯ
+// ОНОВЛЕНА КАРТКА ЗАМОВЛЕННЯ З ПЛАВНИМ РОЗГОРТАННЯМ
 @Composable
 fun OrderCard(order: OpenOrder, onAcceptClick: (Int) -> Unit) {
     var isAccepting by remember { mutableStateOf(false) }
+    var expanded by remember { mutableStateOf(false) }
 
-    // Определяем текст и цвет для типа оплаты
     val paymentInfo = when (order.paymentType) {
         "prepaid" -> Pair("✅ Оплачено", AppColors.Secondary)
         "cash" -> Pair("💵 Готівка", AppColors.Warning)
@@ -315,75 +319,115 @@ fun OrderCard(order: OpenOrder, onAcceptClick: (Int) -> Unit) {
     }
 
     Card(
-        modifier = Modifier.fillMaxWidth().shadow(6.dp, RoundedCornerShape(24.dp), spotColor = Color.Black.copy(alpha = 0.05f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(6.dp, RoundedCornerShape(24.dp), spotColor = Color.Black.copy(alpha = 0.05f))
+            .clickable { expanded = !expanded }
+            .animateContentSize(
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioNoBouncy,
+                    stiffness = Spring.StiffnessMedium
+                )
+            ),
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = AppColors.Surface)
     ) {
         Column(modifier = Modifier.padding(24.dp)) {
-            // Заголовок (Название и цена)
+            // КОМПАКТНА ЧАСТИНА
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(order.restaurantName, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, color = AppColors.TextPrimary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (!expanded) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(order.restaurantAddress, fontSize = 14.sp, color = AppColors.TextSecondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
                 }
                 Box(modifier = Modifier.background(AppColors.Secondary.copy(alpha = 0.1f), RoundedCornerShape(12.dp)).padding(horizontal = 12.dp, vertical = 6.dp)) {
                     Text("${order.fee.toInt()} ₴", fontWeight = FontWeight.Black, fontSize = 18.sp, color = AppColors.Secondary)
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // НОВОЕ: Бейджи с информацией (Оплата и Расстояние до заведения)
             Row(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                // Бейдж типа оплаты
                 Box(modifier = Modifier.background(paymentInfo.second.copy(alpha = 0.15f), RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 6.dp)) {
                     Text(paymentInfo.first, color = paymentInfo.second, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                 }
 
-                // Бейдж расстояния до заведения
                 if (order.distToRest != null) {
                     Box(modifier = Modifier.background(AppColors.Primary.copy(alpha = 0.08f), RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 6.dp)) {
-                        Text("🏃 до закладу ~${order.distToRest} км", color = AppColors.Primary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        Text("🏃 ~${order.distToRest} км", color = AppColors.Primary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                     }
                 }
+
+                Spacer(modifier = Modifier.weight(1f))
+
+                Icon(
+                    imageVector = if (expanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                    contentDescription = if (expanded) "Згорнути" else "Розгорнути",
+                    tint = AppColors.TextSecondary
+                )
             }
 
-            // Адреса
-            AddressItem(icon = Icons.Default.LocationOn, text = order.restaurantAddress, label = "Забрати")
+            // ДЕТАЛЬНА ЧАСТИНА (ВІДЧИНЯЄТЬСЯ)
+            if (expanded) {
+                Spacer(modifier = Modifier.height(16.dp))
+                HorizontalDivider(color = Color.LightGray.copy(alpha = 0.3f))
+                Spacer(modifier = Modifier.height(16.dp))
 
-            Box(modifier = Modifier.padding(start = 19.dp, top = 6.dp, bottom = 6.dp).height(20.dp).width(2.dp).background(Color.LightGray.copy(alpha = 0.5f)))
-
-            AddressItem(icon = Icons.Default.Home, text = order.dropoffAddress, label = "Доставити")
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Нижняя панель (Расстояние доставки и кнопка)
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (order.distTrip != null) {
-                    Text("📍 Маршрут: ~${order.distTrip} км", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = AppColors.TextSecondary, modifier = Modifier.weight(1f))
-                } else {
-                    Spacer(modifier = Modifier.weight(1f))
+                // Інформація про ВИКУП
+                if (order.paymentType == "buyout") {
+                    Box(modifier = Modifier.fillMaxWidth().background(AppColors.Error.copy(alpha = 0.1f), RoundedCornerShape(12.dp)).padding(12.dp)) {
+                        Text(
+                            text = "Сума викупу: ${order.price} ₴ (Ви сплачуєте цю суму в закладі, а клієнт повертає її вам при доставці)",
+                            color = AppColors.Error, fontSize = 14.sp, fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
                 }
 
-                ModernButton(
-                    text = "Прийняти",
-                    onClick = {
-                        isAccepting = true
-                        onAcceptClick(order.id)
-                    },
-                    modifier = Modifier.height(48.dp).width(140.dp),
-                    backgroundColor = AppColors.Primary,
-                    isLoading = isAccepting
-                )
+                AddressItem(icon = Icons.Default.LocationOn, text = order.restaurantAddress, label = "Забрати")
+
+                Box(modifier = Modifier.padding(start = 19.dp, top = 6.dp, bottom = 6.dp).height(20.dp).width(2.dp).background(Color.LightGray.copy(alpha = 0.5f)))
+
+                AddressItem(icon = Icons.Default.Home, text = order.dropoffAddress, label = "Доставити")
+
+                if (!order.comment.isNullOrEmpty()) {
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Box(modifier = Modifier.fillMaxWidth().background(Color(0xFFFFF7ED), RoundedCornerShape(12.dp)).padding(12.dp)) {
+                        Text("Коментар: ${order.comment}", fontSize = 14.sp, color = Color(0xFFC2410C), fontWeight = FontWeight.Medium)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (order.distTrip != null) {
+                        Text("📍 Маршрут: ~${order.distTrip} км", fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = AppColors.TextSecondary, modifier = Modifier.weight(1f))
+                    } else {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+
+                    ModernButton(
+                        text = "Прийняти",
+                        onClick = {
+                            isAccepting = true
+                            onAcceptClick(order.id)
+                        },
+                        modifier = Modifier.height(48.dp).width(140.dp),
+                        backgroundColor = AppColors.Primary,
+                        isLoading = isAccepting
+                    )
+                }
             }
         }
     }
 }
 
 // ==========================================
-// 3. ЭКРАН АКТИВНОГО ЗАКАЗА (Active Order)
+// 3. ЕКРАН АКТИВНОГО ЗАМОВЛЕННЯ (Active Order)
 // ==========================================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -465,7 +509,7 @@ fun getStatusColor(status: String): Color = when(status) {
     else -> AppColors.TextSecondary
 }
 
-// --- ПОД-ЭКРАН: ДЕТАЛИ ЗАКАЗА З КНОПКАМИ НАВІГАЦІЇ ТА PULL-TO-REFRESH ---
+// --- ПІД-ЕКРАН: ДЕТАЛІ ЗАМОВЛЕННЯ ---
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OrderDetailsView(
@@ -539,6 +583,27 @@ fun OrderDetailsView(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
                 contentPadding = PaddingValues(top = 16.dp, bottom = 100.dp)
             ) {
+
+                // --- НОВИЙ БЛОК: СПОВІЩЕННЯ ПРО ГОТОВНІСТЬ ЗАМОВЛЕННЯ ---
+                if (job.serverStatus == "ready") {
+                    item {
+                        Box(modifier = Modifier
+                            .fillMaxWidth()
+                            .background(AppColors.Secondary.copy(alpha = 0.15f), RoundedCornerShape(16.dp))
+                            .border(2.dp, AppColors.Secondary, RoundedCornerShape(16.dp))
+                            .padding(16.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = AppColors.Secondary, modifier = Modifier.size(36.dp))
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column {
+                                    Text("Замовлення готове!", fontWeight = FontWeight.ExtraBold, color = AppColors.Secondary, fontSize = 18.sp)
+                                    Text("Можете забирати пакунок у закладі.", color = AppColors.TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                }
+                            }
+                        }
+                    }
+                }
 
                 // --- ФІНАНСИ ТА ОПЛАТА ---
                 item {
@@ -717,7 +782,7 @@ fun OrderDetailsView(
     }
 }
 
-// --- ПОД-ЭКРАН: ЧАТ (АВТООБНОВЛЕНИЕ + OPTIMISTIC UI) ---
+// --- ПІД-ЕКРАН: ЧАТ ---
 @Composable
 fun ChatView(jobId: Int, cookie: String) {
     var messages by remember { mutableStateOf<List<ChatMessage>>(emptyList()) }
@@ -858,7 +923,7 @@ fun ChatView(jobId: Int, cookie: String) {
 }
 
 // ==========================================
-// 4. ЭКРАН ИСТОРИИ ЗАКАЗОВ (History)
+// 4. ЕКРАН ІСТОРІЇ ЗАМОВЛЕНЬ (History)
 // ==========================================
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
