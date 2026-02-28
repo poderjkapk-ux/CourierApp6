@@ -203,8 +203,9 @@ class MainActivity : ComponentActivity() {
                             var isOnline by remember { mutableStateOf(true) }
                             val currentCookie = sharedPref.getString("cookie", "") ?: ""
 
-                            fun fetchData() {
-                                isLoading = true
+                            // ДОДАНО: параметр isSilent для "тихого" оновлення
+                            fun fetchData(isSilent: Boolean = false) {
+                                if (!isSilent) isLoading = true
                                 coroutineScope.launch {
                                     try {
                                         val activeJobRes = RetrofitClient.apiService.getActiveJob(currentCookie)
@@ -215,7 +216,7 @@ class MainActivity : ComponentActivity() {
                                             return@launch
                                         }
 
-                                        // НОВЕ: Отримуємо реальні координати замість 0.0, 0.0
+                                        // Отримуємо реальні координати
                                         var currentLat = 0.0
                                         var currentLon = 0.0
 
@@ -233,14 +234,22 @@ class MainActivity : ComponentActivity() {
                                             lon = currentLon
                                         )
                                     } catch (e: Exception) {
-                                        Toast.makeText(this@MainActivity, "Помилка завантаження", Toast.LENGTH_SHORT).show()
+                                        if (!isSilent) Toast.makeText(this@MainActivity, "Помилка завантаження", Toast.LENGTH_SHORT).show()
                                     } finally {
-                                        isLoading = false
+                                        if (!isSilent) isLoading = false
                                     }
                                 }
                             }
 
-                            LaunchedEffect(Unit) { fetchData() }
+                            LaunchedEffect(Unit) { fetchData(isSilent = false) }
+
+                            // ДОДАНО: Фонове тихе оновлення кожні 5 секунд
+                            LaunchedEffect(Unit) {
+                                while (true) {
+                                    kotlinx.coroutines.delay(5000)
+                                    fetchData(isSilent = true)
+                                }
+                            }
 
                             // Слухаємо WebSocket події для миттєвого оновлення списку
                             LaunchedEffect(Unit) {
@@ -249,7 +258,7 @@ class MainActivity : ComponentActivity() {
                                         val json = JSONObject(messageJson)
                                         val type = json.getString("type")
                                         if (type == "new_order" || type == "job_update") {
-                                            fetchData() // Оновлюємо список
+                                            fetchData(isSilent = true) // Оновлюємо список тихо
                                         }
                                     } catch (e: Exception) {
                                         e.printStackTrace()
@@ -283,12 +292,12 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
                                 },
-                                onRefresh = { fetchData() },
+                                onRefresh = { fetchData(isSilent = false) },
                                 onAcceptOrder = { jobId ->
                                     coroutineScope.launch {
                                         try {
                                             val res = RetrofitClient.apiService.acceptOrder(currentCookie, jobId)
-                                            if (res.isSuccessful) fetchData()
+                                            if (res.isSuccessful) fetchData(isSilent = false)
                                         } catch (e: Exception) {}
                                     }
                                 }

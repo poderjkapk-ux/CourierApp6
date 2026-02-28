@@ -444,23 +444,37 @@ fun ActiveOrderScreen(
     Scaffold(
         containerColor = AppColors.Background,
         topBar = {
-            Column(modifier = Modifier.background(AppColors.Surface).shadow(4.dp)) {
+            Column(
+                modifier = Modifier
+                    .background(Brush.verticalGradient(listOf(AppColors.Surface, AppColors.Background)))
+                    .shadow(elevation = 8.dp, spotColor = AppColors.Primary.copy(alpha = 0.1f))
+            ) {
                 TopAppBar(
                     title = {
                         Column {
-                            Text("Замовлення #${job.id}", fontWeight = FontWeight.ExtraBold, fontSize = 20.sp)
-                            Text(getStatusText(job.serverStatus), fontSize = 14.sp, fontWeight = FontWeight.Medium, color = getStatusColor(job.serverStatus))
+                            Text("Замовлення #${job.id}", fontWeight = FontWeight.ExtraBold, fontSize = 22.sp, color = AppColors.TextPrimary)
+                            Text(
+                                text = getStatusText(job.serverStatus, job.isReady),
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = getStatusColor(job.serverStatus, job.isReady)
+                            )
                         }
                     },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = AppColors.Surface),
+                    colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
                     actions = {
-                        IconButton(onClick = onRefresh) { Icon(Icons.Default.Refresh, "Оновити", tint = AppColors.Primary) }
+                        IconButton(
+                            onClick = onRefresh,
+                            modifier = Modifier.padding(end = 8.dp).background(AppColors.Primary.copy(alpha = 0.05f), CircleShape)
+                        ) {
+                            Icon(Icons.Default.Refresh, "Оновити", tint = AppColors.Primary)
+                        }
                     }
                 )
 
                 TabRow(
                     selectedTabIndex = selectedTabIndex,
-                    containerColor = AppColors.Surface,
+                    containerColor = Color.Transparent,
                     contentColor = AppColors.Primary,
                     indicator = { tabPositions ->
                         TabRowDefaults.Indicator(
@@ -469,13 +483,13 @@ fun ActiveOrderScreen(
                             color = AppColors.Primary
                         )
                     },
-                    divider = { HorizontalDivider(color = Color.LightGray.copy(alpha = 0.3f)) }
+                    divider = { HorizontalDivider(color = Color.LightGray.copy(alpha = 0.2f)) }
                 ) {
                     tabs.forEachIndexed { index, title ->
                         Tab(
                             selected = selectedTabIndex == index,
                             onClick = { selectedTabIndex = index },
-                            text = { Text(title, fontWeight = if (selectedTabIndex == index) FontWeight.Bold else FontWeight.Medium, fontSize = 16.sp) },
+                            text = { Text(title, fontWeight = if (selectedTabIndex == index) FontWeight.Bold else FontWeight.SemiBold, fontSize = 16.sp) },
                             selectedContentColor = AppColors.Primary,
                             unselectedContentColor = AppColors.TextSecondary
                         )
@@ -493,20 +507,26 @@ fun ActiveOrderScreen(
     }
 }
 
-fun getStatusText(status: String): String = when(status) {
-    "assigned" -> "Прямуйте до закладу"
-    "arrived_pickup" -> "Очікуйте видачі"
-    "ready" -> "Замовлення готове! Можна забирати."
-    "picked_up" -> "Прямуйте до клієнта"
-    "returning" -> "Повернення коштів у заклад"
-    else -> status
+fun getStatusText(status: String, isReady: Boolean): String {
+    if (isReady) return "Замовлення готове! Можна забирати."
+    return when(status) {
+        "assigned" -> "Прямуйте до закладу"
+        "arrived_pickup" -> "Очікуйте видачі"
+        "ready" -> "Замовлення готове! Можна забирати."
+        "picked_up" -> "Прямуйте до клієнта"
+        "returning" -> "Повернення коштів у заклад"
+        else -> status
+    }
 }
 
-fun getStatusColor(status: String): Color = when(status) {
-    "assigned", "picked_up" -> AppColors.Primary
-    "ready" -> AppColors.Secondary
-    "returning" -> AppColors.Warning
-    else -> AppColors.TextSecondary
+fun getStatusColor(status: String, isReady: Boolean): Color {
+    if (isReady) return AppColors.Secondary
+    return when(status) {
+        "assigned", "picked_up" -> AppColors.Primary
+        "ready" -> AppColors.Secondary
+        "returning" -> AppColors.Warning
+        else -> AppColors.TextSecondary
+    }
 }
 
 // --- ПІД-ЕКРАН: ДЕТАЛІ ЗАМОВЛЕННЯ ---
@@ -572,6 +592,8 @@ fun OrderDetailsView(
     val isStep2Active = job.serverStatus == "picked_up"
     val isStep2Done = job.serverStatus in listOf("delivered", "returning")
 
+    val isOrderReady = job.isReady || job.serverStatus == "ready"
+
     Column(modifier = Modifier.fillMaxSize()) {
         PullToRefreshBox(
             isRefreshing = isRefreshing,
@@ -580,25 +602,31 @@ fun OrderDetailsView(
         ) {
             LazyColumn(
                 modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-                contentPadding = PaddingValues(top = 16.dp, bottom = 100.dp)
+                verticalArrangement = Arrangement.spacedBy(20.dp),
+                contentPadding = PaddingValues(top = 24.dp, bottom = 100.dp)
             ) {
 
-                // --- НОВИЙ БЛОК: СПОВІЩЕННЯ ПРО ГОТОВНІСТЬ ЗАМОВЛЕННЯ ---
-                if (job.serverStatus == "ready") {
+                // --- НОВИЙ БЛОК: КРАСИВЕ СПОВІЩЕННЯ ПРО ГОТОВНІСТЬ ЗАМОВЛЕННЯ ---
+                if (isOrderReady) {
                     item {
                         Box(modifier = Modifier
                             .fillMaxWidth()
-                            .background(AppColors.Secondary.copy(alpha = 0.15f), RoundedCornerShape(16.dp))
-                            .border(2.dp, AppColors.Secondary, RoundedCornerShape(16.dp))
-                            .padding(16.dp)
+                            .shadow(12.dp, RoundedCornerShape(20.dp), spotColor = AppColors.Secondary.copy(alpha = 0.4f))
+                            .background(Brush.horizontalGradient(listOf(AppColors.Secondary, Color(0xFF059669))), RoundedCornerShape(20.dp))
+                            .padding(20.dp)
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = AppColors.Secondary, modifier = Modifier.size(36.dp))
-                                Spacer(modifier = Modifier.width(12.dp))
+                                Box(
+                                    modifier = Modifier.size(48.dp).background(Color.White.copy(alpha = 0.2f), CircleShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = Color.White, modifier = Modifier.size(32.dp))
+                                }
+                                Spacer(modifier = Modifier.width(16.dp))
                                 Column {
-                                    Text("Замовлення готове!", fontWeight = FontWeight.ExtraBold, color = AppColors.Secondary, fontSize = 18.sp)
-                                    Text("Можете забирати пакунок у закладі.", color = AppColors.TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                                    Text("ЗАМОВЛЕННЯ ГОТОВЕ!", fontWeight = FontWeight.Black, color = Color.White, fontSize = 18.sp, letterSpacing = 0.5.sp)
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text("Можете забирати пакунок у закладі.", color = Color.White.copy(alpha = 0.9f), fontSize = 14.sp, fontWeight = FontWeight.Medium)
                                 }
                             }
                         }
@@ -608,19 +636,22 @@ fun OrderDetailsView(
                 // --- ФІНАНСИ ТА ОПЛАТА ---
                 item {
                     Card(
-                        modifier = Modifier.fillMaxWidth().shadow(4.dp, RoundedCornerShape(20.dp), spotColor = Color.Black.copy(alpha = 0.05f)),
-                        shape = RoundedCornerShape(20.dp),
+                        modifier = Modifier.fillMaxWidth().shadow(8.dp, RoundedCornerShape(24.dp), spotColor = Color.Black.copy(alpha = 0.08f)),
+                        shape = RoundedCornerShape(24.dp),
                         colors = CardDefaults.cardColors(containerColor = AppColors.Surface)
                     ) {
                         Column {
-                            Row(modifier = Modifier.fillMaxWidth().padding(20.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Row(modifier = Modifier.fillMaxWidth().padding(24.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                 Column {
-                                    Text("Ваш дохід:", color = AppColors.TextSecondary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                                    Text("${job.deliveryFee} ₴", fontWeight = FontWeight.Black, color = AppColors.Secondary, fontSize = 24.sp)
+                                    Text("ВАШ ДОХІД", color = AppColors.TextSecondary, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text("${job.deliveryFee} ₴", fontWeight = FontWeight.Black, color = AppColors.Secondary, fontSize = 28.sp)
                                 }
+                                Box(modifier = Modifier.width(1.dp).height(40.dp).background(Color.LightGray.copy(alpha = 0.5f)))
                                 Column(horizontalAlignment = Alignment.End) {
-                                    Text("Сума замовлення:", color = AppColors.TextSecondary, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                                    Text("${job.orderPrice} ₴", fontWeight = FontWeight.Bold, fontSize = 20.sp, color = AppColors.TextPrimary)
+                                    Text("СУМА ЗАМОВЛЕННЯ", color = AppColors.TextSecondary, fontSize = 12.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text("${job.orderPrice} ₴", fontWeight = FontWeight.ExtraBold, fontSize = 24.sp, color = AppColors.TextPrimary)
                                 }
                             }
 
@@ -631,13 +662,13 @@ fun OrderDetailsView(
                                 else -> Pair("Оплата: ${job.paymentType}", AppColors.Primary)
                             }
 
-                            Box(modifier = Modifier.fillMaxWidth().background(paymentInfo.second.copy(alpha = 0.1f)).padding(16.dp)) {
-                                Text(paymentInfo.first, fontWeight = FontWeight.Bold, color = paymentInfo.second, fontSize = 16.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
+                            Box(modifier = Modifier.fillMaxWidth().background(paymentInfo.second.copy(alpha = 0.12f)).padding(16.dp)) {
+                                Text(paymentInfo.first, fontWeight = FontWeight.ExtraBold, color = paymentInfo.second, fontSize = 15.sp, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
                             }
 
                             if (!job.comment.isNullOrEmpty()) {
                                 Box(modifier = Modifier.fillMaxWidth().background(Color(0xFFFFF7ED)).padding(16.dp)) {
-                                    Text("Коментар: ${job.comment}", fontSize = 15.sp, color = Color(0xFFC2410C), fontWeight = FontWeight.Medium)
+                                    Text("💬 Коментар: ${job.comment}", fontSize = 15.sp, color = Color(0xFFC2410C), fontWeight = FontWeight.SemiBold)
                                 }
                             }
                         }
@@ -648,43 +679,47 @@ fun OrderDetailsView(
                 item {
                     Card(
                         modifier = Modifier.fillMaxWidth().alpha(if (isStep1Active || isStep1Done) 1f else 0.5f)
-                            .border(BorderStroke(if (isStep1Active) 2.dp else 1.dp, if (isStep1Active) AppColors.Primary else Color.LightGray.copy(alpha = 0.3f)), RoundedCornerShape(20.dp))
-                            .shadow(if (isStep1Active) 8.dp else 2.dp, RoundedCornerShape(20.dp), spotColor = if (isStep1Active) AppColors.Primary.copy(alpha = 0.2f) else Color.Black.copy(0.05f)),
-                        shape = RoundedCornerShape(20.dp),
+                            .border(BorderStroke(if (isStep1Active) 2.dp else 1.dp, if (isStep1Active) AppColors.Primary else Color.LightGray.copy(alpha = 0.3f)), RoundedCornerShape(24.dp))
+                            .shadow(if (isStep1Active) 12.dp else 2.dp, RoundedCornerShape(24.dp), spotColor = if (isStep1Active) AppColors.Primary.copy(alpha = 0.2f) else Color.Black.copy(0.05f)),
+                        shape = RoundedCornerShape(24.dp),
                         colors = CardDefaults.cardColors(containerColor = AppColors.Surface)
                     ) {
-                        Column(modifier = Modifier.padding(20.dp)) {
+                        Column(modifier = Modifier.padding(24.dp)) {
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text("КРОК 1: ЗАКЛАД", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (isStep1Active) AppColors.Primary else AppColors.TextSecondary, letterSpacing = 1.sp)
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    Text(job.partnerName, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, color = AppColors.TextPrimary)
+                                    Box(modifier = Modifier.background(if (isStep1Active) AppColors.Primary.copy(alpha = 0.1f) else Color.Transparent, RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 4.dp)) {
+                                        Text("КРОК 1: ЗАКЛАД", fontSize = 12.sp, fontWeight = FontWeight.Black, color = if (isStep1Active) AppColors.Primary else AppColors.TextSecondary, letterSpacing = 1.sp)
+                                    }
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Text(job.partnerName, fontWeight = FontWeight.ExtraBold, fontSize = 22.sp, color = AppColors.TextPrimary)
                                 }
                                 if (!job.partnerPhone.isNullOrBlank()) {
                                     Card(
                                         shape = CircleShape, colors = CardDefaults.cardColors(containerColor = AppColors.Primary.copy(alpha = 0.1f)),
-                                        modifier = Modifier.clip(CircleShape).clickable {
+                                        modifier = Modifier.size(48.dp).clip(CircleShape).clickable {
                                             try { context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:${job.partnerPhone}"))) } catch (e: Exception) {}
                                         }
                                     ) {
-                                        Icon(Icons.Default.Call, contentDescription = "Call", tint = AppColors.Primary, modifier = Modifier.padding(12.dp).size(24.dp))
+                                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                            Icon(Icons.Default.Call, contentDescription = "Call", tint = AppColors.Primary, modifier = Modifier.size(24.dp))
+                                        }
                                     }
                                 }
                             }
 
-                            Spacer(modifier = Modifier.height(16.dp))
+                            Spacer(modifier = Modifier.height(20.dp))
                             AddressItem(icon = Icons.Default.LocationOn, text = job.partnerAddress)
 
-                            Spacer(modifier = Modifier.height(20.dp))
+                            Spacer(modifier = Modifier.height(24.dp))
                             OutlinedButton(
                                 onClick = { openGoogleMaps(job.partnerAddress, null, null) },
-                                modifier = Modifier.fillMaxWidth().height(48.dp),
-                                shape = RoundedCornerShape(14.dp),
-                                border = BorderStroke(1.5.dp, AppColors.Primary),
+                                modifier = Modifier.fillMaxWidth().height(52.dp),
+                                shape = RoundedCornerShape(16.dp),
+                                border = BorderStroke(2.dp, AppColors.Primary),
                                 colors = ButtonDefaults.outlinedButtonColors(contentColor = AppColors.Primary)
                             ) {
-                                Icon(Icons.Rounded.Place, contentDescription = null, modifier = Modifier.size(20.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
+                                Icon(Icons.Rounded.Place, contentDescription = null, modifier = Modifier.size(22.dp))
+                                Spacer(modifier = Modifier.width(10.dp))
                                 Text("Маршрут до закладу", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                             }
                         }
@@ -695,41 +730,45 @@ fun OrderDetailsView(
                 item {
                     Card(
                         modifier = Modifier.fillMaxWidth().alpha(if (isStep2Active || isStep2Done) 1f else 0.5f)
-                            .border(BorderStroke(if (isStep2Active) 2.dp else 1.dp, if (isStep2Active) AppColors.Primary else Color.LightGray.copy(alpha = 0.3f)), RoundedCornerShape(20.dp))
-                            .shadow(if (isStep2Active) 8.dp else 2.dp, RoundedCornerShape(20.dp), spotColor = if (isStep2Active) AppColors.Primary.copy(alpha = 0.2f) else Color.Black.copy(0.05f)),
-                        shape = RoundedCornerShape(20.dp),
+                            .border(BorderStroke(if (isStep2Active) 2.dp else 1.dp, if (isStep2Active) AppColors.Primary else Color.LightGray.copy(alpha = 0.3f)), RoundedCornerShape(24.dp))
+                            .shadow(if (isStep2Active) 12.dp else 2.dp, RoundedCornerShape(24.dp), spotColor = if (isStep2Active) AppColors.Primary.copy(alpha = 0.2f) else Color.Black.copy(0.05f)),
+                        shape = RoundedCornerShape(24.dp),
                         colors = CardDefaults.cardColors(containerColor = AppColors.Surface)
                     ) {
-                        Column(modifier = Modifier.padding(20.dp)) {
+                        Column(modifier = Modifier.padding(24.dp)) {
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text("КРОК 2: КЛІЄНТ", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = if (isStep2Active) AppColors.Primary else AppColors.TextSecondary, letterSpacing = 1.sp)
-                                    Spacer(modifier = Modifier.height(6.dp))
-                                    Text(job.customerName ?: "Ім'я не вказано", fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, color = AppColors.TextPrimary)
+                                    Box(modifier = Modifier.background(if (isStep2Active) AppColors.Primary.copy(alpha = 0.1f) else Color.Transparent, RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 4.dp)) {
+                                        Text("КРОК 2: КЛІЄНТ", fontSize = 12.sp, fontWeight = FontWeight.Black, color = if (isStep2Active) AppColors.Primary else AppColors.TextSecondary, letterSpacing = 1.sp)
+                                    }
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Text(job.customerName ?: "Ім'я не вказано", fontWeight = FontWeight.ExtraBold, fontSize = 22.sp, color = AppColors.TextPrimary)
                                 }
                                 Card(
                                     shape = CircleShape, colors = CardDefaults.cardColors(containerColor = AppColors.Primary.copy(alpha = 0.1f)),
-                                    modifier = Modifier.clip(CircleShape).clickable {
+                                    modifier = Modifier.size(48.dp).clip(CircleShape).clickable {
                                         try { context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:${job.customerPhone}"))) } catch (e: Exception) {}
                                     }
                                 ) {
-                                    Icon(Icons.Default.Call, contentDescription = "Call", tint = AppColors.Primary, modifier = Modifier.padding(12.dp).size(24.dp))
+                                    Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                        Icon(Icons.Default.Call, contentDescription = "Call", tint = AppColors.Primary, modifier = Modifier.size(24.dp))
+                                    }
                                 }
                             }
 
-                            Spacer(modifier = Modifier.height(16.dp))
+                            Spacer(modifier = Modifier.height(20.dp))
                             AddressItem(icon = Icons.Default.Home, text = job.customerAddress)
 
-                            Spacer(modifier = Modifier.height(20.dp))
+                            Spacer(modifier = Modifier.height(24.dp))
                             OutlinedButton(
                                 onClick = { openGoogleMaps(job.customerAddress, job.customerLat, job.customerLon) },
-                                modifier = Modifier.fillMaxWidth().height(48.dp),
-                                shape = RoundedCornerShape(14.dp),
-                                border = BorderStroke(1.5.dp, AppColors.Primary),
+                                modifier = Modifier.fillMaxWidth().height(52.dp),
+                                shape = RoundedCornerShape(16.dp),
+                                border = BorderStroke(2.dp, AppColors.Primary),
                                 colors = ButtonDefaults.outlinedButtonColors(contentColor = AppColors.Primary)
                             ) {
-                                Icon(Icons.Rounded.Place, contentDescription = null, modifier = Modifier.size(20.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
+                                Icon(Icons.Rounded.Place, contentDescription = null, modifier = Modifier.size(22.dp))
+                                Spacer(modifier = Modifier.width(10.dp))
                                 Text("Маршрут до клієнта", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                             }
                         }
@@ -740,27 +779,29 @@ fun OrderDetailsView(
                 if (job.isReturnRequired && isStep2Done) {
                     item {
                         Card(
-                            modifier = Modifier.fillMaxWidth().border(BorderStroke(2.dp, AppColors.Warning), RoundedCornerShape(20.dp)).shadow(8.dp, RoundedCornerShape(20.dp), spotColor = AppColors.Warning.copy(alpha = 0.3f)),
-                            shape = RoundedCornerShape(20.dp),
+                            modifier = Modifier.fillMaxWidth().border(BorderStroke(2.dp, AppColors.Warning), RoundedCornerShape(24.dp)).shadow(12.dp, RoundedCornerShape(24.dp), spotColor = AppColors.Warning.copy(alpha = 0.3f)),
+                            shape = RoundedCornerShape(24.dp),
                             colors = CardDefaults.cardColors(containerColor = AppColors.Surface)
                         ) {
-                            Column(modifier = Modifier.padding(20.dp)) {
-                                Text("КРОК 3: ПОВЕРНЕННЯ КОШТІВ", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = AppColors.Warning, letterSpacing = 1.sp)
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text("Поверніть гроші в заклад", fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, color = AppColors.TextPrimary)
-                                Spacer(modifier = Modifier.height(16.dp))
+                            Column(modifier = Modifier.padding(24.dp)) {
+                                Box(modifier = Modifier.background(AppColors.Warning.copy(alpha = 0.1f), RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 4.dp)) {
+                                    Text("КРОК 3: ПОВЕРНЕННЯ КОШТІВ", fontSize = 12.sp, fontWeight = FontWeight.Black, color = AppColors.Warning, letterSpacing = 1.sp)
+                                }
+                                Spacer(modifier = Modifier.height(10.dp))
+                                Text("Поверніть гроші в заклад", fontWeight = FontWeight.ExtraBold, fontSize = 22.sp, color = AppColors.TextPrimary)
+                                Spacer(modifier = Modifier.height(20.dp))
                                 AddressItem(icon = Icons.Default.ArrowForward, text = job.partnerAddress)
 
-                                Spacer(modifier = Modifier.height(20.dp))
+                                Spacer(modifier = Modifier.height(24.dp))
                                 OutlinedButton(
                                     onClick = { openGoogleMaps(job.partnerAddress, null, null) },
-                                    modifier = Modifier.fillMaxWidth().height(48.dp),
-                                    shape = RoundedCornerShape(14.dp),
-                                    border = BorderStroke(1.5.dp, AppColors.Warning),
+                                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                                    shape = RoundedCornerShape(16.dp),
+                                    border = BorderStroke(2.dp, AppColors.Warning),
                                     colors = ButtonDefaults.outlinedButtonColors(contentColor = AppColors.Warning)
                                 ) {
-                                    Icon(Icons.Rounded.Place, contentDescription = null, modifier = Modifier.size(20.dp))
-                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Icon(Icons.Rounded.Place, contentDescription = null, modifier = Modifier.size(22.dp))
+                                    Spacer(modifier = Modifier.width(10.dp))
                                     Text("Маршрут назад", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                                 }
                             }
@@ -770,13 +811,19 @@ fun OrderDetailsView(
             }
         }
 
-        // --- КНОПКА ДІЇ ЗНИЗУ ---
-        Box(modifier = Modifier.fillMaxWidth().background(AppColors.Surface).shadow(16.dp, spotColor = Color.Black.copy(alpha = 0.1f)).padding(16.dp)) {
+        // --- КНОПКА ДІЇ ЗНИЗУ З ПРИКОЛЬНОЮ ТІННЮ ---
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(AppColors.Surface)
+                .shadow(24.dp, spotColor = Color.Black.copy(alpha = 0.15f))
+                .padding(20.dp)
+        ) {
             when (job.serverStatus) {
                 "assigned" -> ModernButton("Я в закладі", { isActionLoading = true; onArrivedPickup(job.id) }, Modifier.fillMaxWidth(), backgroundColor = AppColors.Primary, isLoading = isActionLoading)
                 "arrived_pickup", "ready" -> ModernButton("Забрав замовлення", { isActionLoading = true; onUpdateStatus(job.id, "picked_up") }, Modifier.fillMaxWidth(), backgroundColor = AppColors.Secondary, isLoading = isActionLoading)
                 "picked_up" -> ModernButton("Успішно доставлено", { isActionLoading = true; onUpdateStatus(job.id, "delivered") }, Modifier.fillMaxWidth(), backgroundColor = AppColors.Secondary, isLoading = isActionLoading)
-                "returning" -> Text("Очікування підтвердження повернення...", modifier = Modifier.align(Alignment.Center).padding(8.dp), color = AppColors.TextSecondary, textAlign = TextAlign.Center, fontWeight = FontWeight.Medium)
+                "returning" -> Text("Очікування підтвердження повернення...", modifier = Modifier.align(Alignment.Center).padding(8.dp), color = AppColors.TextSecondary, textAlign = TextAlign.Center, fontWeight = FontWeight.Bold, fontSize = 16.sp)
             }
         }
     }
