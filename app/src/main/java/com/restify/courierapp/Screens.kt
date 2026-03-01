@@ -55,6 +55,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.text.SimpleDateFormat
+import java.time.Duration
+import java.time.Instant
 import java.util.Date
 import java.util.Locale
 
@@ -168,6 +170,110 @@ fun AddressItem(icon: ImageVector, text: String, label: String? = null) {
 }
 
 // ==========================================
+// КОМПОНЕНТИ ТАЙМЕРІВ ТА ЧАСУ
+// ==========================================
+
+@Composable
+fun CurrentTimeDisplay() {
+    var currentTime by remember { mutableStateOf("") }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            val format = SimpleDateFormat("HH:mm", Locale.getDefault())
+            currentTime = format.format(Date())
+            delay(1000L)
+        }
+    }
+
+    Box(
+        modifier = Modifier
+            .background(AppColors.Primary.copy(alpha = 0.08f), RoundedCornerShape(12.dp))
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+    ) {
+        Text(
+            text = currentTime,
+            fontSize = 16.sp,
+            fontWeight = FontWeight.ExtraBold,
+            color = AppColors.Primary
+        )
+    }
+}
+
+@Composable
+fun StepTimer(
+    startTimeIso: String?,
+    endTimeIso: String?,
+    isActive: Boolean,
+    modifier: Modifier = Modifier
+) {
+    if (startTimeIso.isNullOrEmpty()) return
+
+    var durationText by remember { mutableStateOf("00:00") }
+
+    LaunchedEffect(startTimeIso, endTimeIso, isActive) {
+        while (true) {
+            try {
+                val start = Instant.parse(startTimeIso)
+                val end = if (!endTimeIso.isNullOrEmpty()) {
+                    Instant.parse(endTimeIso)
+                } else if (isActive) {
+                    Instant.now()
+                } else {
+                    null
+                }
+
+                if (end != null) {
+                    val duration = Duration.between(start, end)
+                    val s = duration.seconds
+                    if (s >= 0) {
+                        val m = s / 60
+                        val h = m / 60
+                        durationText = if (h > 0) {
+                            String.format("%02d:%02d:%02d", h, m % 60, s % 60)
+                        } else {
+                            String.format("%02d:%02d", m, s % 60)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                // Ігноруємо помилки парсингу дат
+            }
+
+            if (!endTimeIso.isNullOrEmpty() || !isActive) {
+                break // Зупиняємо "тікання", якщо час зафіксований
+            }
+            delay(1000L)
+        }
+    }
+
+    val backgroundColor = if (!endTimeIso.isNullOrEmpty()) {
+        AppColors.Secondary.copy(alpha = 0.15f)
+    } else if (isActive) {
+        AppColors.Primary.copy(alpha = 0.15f)
+    } else {
+        Color.LightGray.copy(alpha = 0.2f)
+    }
+
+    val textColor = if (!endTimeIso.isNullOrEmpty()) AppColors.Secondary else if (isActive) AppColors.Primary else AppColors.TextSecondary
+
+    Box(
+        modifier = modifier
+            .background(backgroundColor, RoundedCornerShape(8.dp))
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = "⏱ $durationText",
+            color = textColor,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Black,
+            letterSpacing = 1.sp
+        )
+    }
+}
+
+
+// ==========================================
 // 1. ЕКРАН АВТОРИЗАЦІЇ (Login Screen)
 // ==========================================
 @Composable
@@ -271,6 +377,8 @@ fun OrdersListScreen(
                 title = { Text("Доступні", fontWeight = FontWeight.ExtraBold, fontSize = 24.sp) },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = AppColors.Background, titleContentColor = AppColors.TextPrimary),
                 actions = {
+                    CurrentTimeDisplay()
+                    Spacer(modifier = Modifier.width(8.dp))
                     IconButton(onClick = onNavigateToHistory) {
                         Icon(Icons.Default.DateRange, contentDescription = "Історія", tint = AppColors.Primary)
                     }
@@ -463,6 +571,8 @@ fun ActiveOrderScreen(
                     },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
                     actions = {
+                        CurrentTimeDisplay()
+                        Spacer(modifier = Modifier.width(8.dp))
                         IconButton(
                             onClick = onRefresh,
                             modifier = Modifier.padding(end = 8.dp).background(AppColors.Primary.copy(alpha = 0.05f), CircleShape)
@@ -687,16 +797,42 @@ fun OrderDetailsView(
                         Column(modifier = Modifier.padding(24.dp)) {
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Box(modifier = Modifier.background(if (isStep1Active) AppColors.Primary.copy(alpha = 0.1f) else Color.Transparent, RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 4.dp)) {
-                                        Text("КРОК 1: ЗАКЛАД", fontSize = 12.sp, fontWeight = FontWeight.Black, color = if (isStep1Active) AppColors.Primary else AppColors.TextSecondary, letterSpacing = 1.sp)
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                        Box(modifier = Modifier.background(if (isStep1Active) AppColors.Primary.copy(alpha = 0.1f) else Color.Transparent, RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 4.dp)) {
+                                            Text("КРОК 1: ЗАКЛАД", fontSize = 12.sp, fontWeight = FontWeight.Black, color = if (isStep1Active) AppColors.Primary else AppColors.TextSecondary, letterSpacing = 1.sp)
+                                        }
+                                        // ТАЙМЕР ПУТІ В ЗАКЛАД І ОЧІКУВАННЯ
+                                        StepTimer(
+                                            startTimeIso = job.assignedAt,
+                                            endTimeIso = job.pickedUpAt,
+                                            isActive = isStep1Active
+                                        )
                                     }
                                     Spacer(modifier = Modifier.height(10.dp))
                                     Text(job.partnerName, fontWeight = FontWeight.ExtraBold, fontSize = 22.sp, color = AppColors.TextPrimary)
                                 }
+                            }
+
+                            Spacer(modifier = Modifier.height(20.dp))
+                            AddressItem(icon = Icons.Default.LocationOn, text = job.partnerAddress)
+
+                            Row(modifier = Modifier.fillMaxWidth().padding(top = 24.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                OutlinedButton(
+                                    onClick = { openGoogleMaps(job.partnerAddress, null, null) },
+                                    modifier = Modifier.weight(1f).height(52.dp),
+                                    shape = RoundedCornerShape(16.dp),
+                                    border = BorderStroke(2.dp, AppColors.Primary),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = AppColors.Primary)
+                                ) {
+                                    Icon(Icons.Rounded.Place, contentDescription = null, modifier = Modifier.size(22.dp))
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text("Маршрут", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                }
                                 if (!job.partnerPhone.isNullOrBlank()) {
+                                    Spacer(modifier = Modifier.width(12.dp))
                                     Card(
-                                        shape = CircleShape, colors = CardDefaults.cardColors(containerColor = AppColors.Primary.copy(alpha = 0.1f)),
-                                        modifier = Modifier.size(48.dp).clip(CircleShape).clickable {
+                                        shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = AppColors.Primary.copy(alpha = 0.1f)),
+                                        modifier = Modifier.size(52.dp).clip(RoundedCornerShape(16.dp)).clickable {
                                             try { context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:${job.partnerPhone}"))) } catch (e: Exception) {}
                                         }
                                     ) {
@@ -705,22 +841,6 @@ fun OrderDetailsView(
                                         }
                                     }
                                 }
-                            }
-
-                            Spacer(modifier = Modifier.height(20.dp))
-                            AddressItem(icon = Icons.Default.LocationOn, text = job.partnerAddress)
-
-                            Spacer(modifier = Modifier.height(24.dp))
-                            OutlinedButton(
-                                onClick = { openGoogleMaps(job.partnerAddress, null, null) },
-                                modifier = Modifier.fillMaxWidth().height(52.dp),
-                                shape = RoundedCornerShape(16.dp),
-                                border = BorderStroke(2.dp, AppColors.Primary),
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = AppColors.Primary)
-                            ) {
-                                Icon(Icons.Rounded.Place, contentDescription = null, modifier = Modifier.size(22.dp))
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Text("Маршрут до закладу", fontWeight = FontWeight.Bold, fontSize = 16.sp)
                             }
                         }
                     }
@@ -738,15 +858,41 @@ fun OrderDetailsView(
                         Column(modifier = Modifier.padding(24.dp)) {
                             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Box(modifier = Modifier.background(if (isStep2Active) AppColors.Primary.copy(alpha = 0.1f) else Color.Transparent, RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 4.dp)) {
-                                        Text("КРОК 2: КЛІЄНТ", fontSize = 12.sp, fontWeight = FontWeight.Black, color = if (isStep2Active) AppColors.Primary else AppColors.TextSecondary, letterSpacing = 1.sp)
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                        Box(modifier = Modifier.background(if (isStep2Active) AppColors.Primary.copy(alpha = 0.1f) else Color.Transparent, RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 4.dp)) {
+                                            Text("КРОК 2: КЛІЄНТ", fontSize = 12.sp, fontWeight = FontWeight.Black, color = if (isStep2Active) AppColors.Primary else AppColors.TextSecondary, letterSpacing = 1.sp)
+                                        }
+                                        // ТАЙМЕР ДОСТАВКИ КЛІЄНТУ
+                                        StepTimer(
+                                            startTimeIso = job.pickedUpAt,
+                                            endTimeIso = job.deliveredAt,
+                                            isActive = isStep2Active
+                                        )
                                     }
                                     Spacer(modifier = Modifier.height(10.dp))
                                     Text(job.customerName ?: "Ім'я не вказано", fontWeight = FontWeight.ExtraBold, fontSize = 22.sp, color = AppColors.TextPrimary)
                                 }
+                            }
+
+                            Spacer(modifier = Modifier.height(20.dp))
+                            AddressItem(icon = Icons.Default.Home, text = job.customerAddress)
+
+                            Row(modifier = Modifier.fillMaxWidth().padding(top = 24.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                OutlinedButton(
+                                    onClick = { openGoogleMaps(job.customerAddress, job.customerLat, job.customerLon) },
+                                    modifier = Modifier.weight(1f).height(52.dp),
+                                    shape = RoundedCornerShape(16.dp),
+                                    border = BorderStroke(2.dp, AppColors.Primary),
+                                    colors = ButtonDefaults.outlinedButtonColors(contentColor = AppColors.Primary)
+                                ) {
+                                    Icon(Icons.Rounded.Place, contentDescription = null, modifier = Modifier.size(22.dp))
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text("Маршрут", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
                                 Card(
-                                    shape = CircleShape, colors = CardDefaults.cardColors(containerColor = AppColors.Primary.copy(alpha = 0.1f)),
-                                    modifier = Modifier.size(48.dp).clip(CircleShape).clickable {
+                                    shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = AppColors.Primary.copy(alpha = 0.1f)),
+                                    modifier = Modifier.size(52.dp).clip(RoundedCornerShape(16.dp)).clickable {
                                         try { context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:${job.customerPhone}"))) } catch (e: Exception) {}
                                     }
                                 ) {
@@ -755,28 +901,13 @@ fun OrderDetailsView(
                                     }
                                 }
                             }
-
-                            Spacer(modifier = Modifier.height(20.dp))
-                            AddressItem(icon = Icons.Default.Home, text = job.customerAddress)
-
-                            Spacer(modifier = Modifier.height(24.dp))
-                            OutlinedButton(
-                                onClick = { openGoogleMaps(job.customerAddress, job.customerLat, job.customerLon) },
-                                modifier = Modifier.fillMaxWidth().height(52.dp),
-                                shape = RoundedCornerShape(16.dp),
-                                border = BorderStroke(2.dp, AppColors.Primary),
-                                colors = ButtonDefaults.outlinedButtonColors(contentColor = AppColors.Primary)
-                            ) {
-                                Icon(Icons.Rounded.Place, contentDescription = null, modifier = Modifier.size(22.dp))
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Text("Маршрут до клієнта", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                            }
                         }
                     }
                 }
 
                 // --- КАРТКА ПОВЕРНЕННЯ КОШТІВ ---
                 if (job.isReturnRequired && isStep2Done) {
+                    val isStep3Active = job.serverStatus == "returning"
                     item {
                         Card(
                             modifier = Modifier.fillMaxWidth().border(BorderStroke(2.dp, AppColors.Warning), RoundedCornerShape(24.dp)).shadow(12.dp, RoundedCornerShape(24.dp), spotColor = AppColors.Warning.copy(alpha = 0.3f)),
@@ -784,8 +915,16 @@ fun OrderDetailsView(
                             colors = CardDefaults.cardColors(containerColor = AppColors.Surface)
                         ) {
                             Column(modifier = Modifier.padding(24.dp)) {
-                                Box(modifier = Modifier.background(AppColors.Warning.copy(alpha = 0.1f), RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 4.dp)) {
-                                    Text("КРОК 3: ПОВЕРНЕННЯ КОШТІВ", fontSize = 12.sp, fontWeight = FontWeight.Black, color = AppColors.Warning, letterSpacing = 1.sp)
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                    Box(modifier = Modifier.background(AppColors.Warning.copy(alpha = 0.1f), RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 4.dp)) {
+                                        Text("КРОК 3: ПОВЕРНЕННЯ КОШТІВ", fontSize = 12.sp, fontWeight = FontWeight.Black, color = AppColors.Warning, letterSpacing = 1.sp)
+                                    }
+                                    // ТАЙМЕР ПОВЕРНЕННЯ КОШТІВ
+                                    StepTimer(
+                                        startTimeIso = job.deliveredAt,
+                                        endTimeIso = job.completedAt,
+                                        isActive = isStep3Active
+                                    )
                                 }
                                 Spacer(modifier = Modifier.height(10.dp))
                                 Text("Поверніть гроші в заклад", fontWeight = FontWeight.ExtraBold, fontSize = 22.sp, color = AppColors.TextPrimary)

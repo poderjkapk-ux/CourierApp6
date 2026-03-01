@@ -46,6 +46,14 @@ data class ActiveJobDetail(
     val status: String,
     @SerializedName("server_status") val serverStatus: String,
     @SerializedName("is_ready") val isReady: Boolean,
+
+    // --- НОВІ ПОЛЯ ДЛЯ ТАЙМЕРІВ ---
+    @SerializedName("assigned_at") val assignedAt: String?,
+    @SerializedName("picked_up_at") val pickedUpAt: String?,
+    @SerializedName("delivered_at") val deliveredAt: String?,
+    @SerializedName("completed_at") val completedAt: String?,
+    // ---------------------------------
+
     @SerializedName("partner_name") val partnerName: String,
     @SerializedName("partner_address") val partnerAddress: String,
     @SerializedName("partner_phone") val partnerPhone: String?,
@@ -202,10 +210,9 @@ class WebSocketManager(private val client: OkHttpClient) {
     val messages = _messages.asSharedFlow()
 
     fun connect(cookie: String) {
-        // Переконайтеся, що використовуєте правильний домен та протокол (wss:// для https)
         val request = Request.Builder()
             .url("wss://restify.site/ws/courier")
-            .addHeader("Cookie", cookie) // Сервер очікує кукі для авторизації
+            .addHeader("Cookie", cookie)
             .build()
 
         webSocket = client.newWebSocket(request, object : WebSocketListener() {
@@ -215,7 +222,6 @@ class WebSocketManager(private val client: OkHttpClient) {
 
             override fun onMessage(webSocket: WebSocket, text: String) {
                 Log.d("WebSocket", "Message received: $text")
-                // Відправляємо повідомлення у Flow (ігноруємо прості "pong")
                 if (text != "pong") {
                     _messages.tryEmit(text)
                 }
@@ -227,12 +233,10 @@ class WebSocketManager(private val client: OkHttpClient) {
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 Log.e("WebSocket", "Error", t)
-                // Опціонально: тут можна додати логіку перепідключення (reconnect)
             }
         })
     }
 
-    // Відправка GPS координат (як очікує бекенд)
     fun sendLocation(lat: Double, lon: Double) {
         val json = JSONObject().apply {
             put("type", "init_location")
@@ -242,7 +246,6 @@ class WebSocketManager(private val client: OkHttpClient) {
         webSocket?.send(json.toString())
     }
 
-    // Відправка пінгу для підтримки з'єднання
     fun sendPing() {
         webSocket?.send(JSONObject().apply { put("type", "ping") }.toString())
     }
@@ -258,10 +261,10 @@ class WebSocketManager(private val client: OkHttpClient) {
 // ==========================================
 
 object RetrofitClient {
-    private const val BASE_URL = "https://restify.site" // Вкажіть актуальний домен
+    private const val BASE_URL = "https://restify.site"
 
     private val okHttpClient = OkHttpClient.Builder()
-        .followRedirects(false) // Важливо для обробки кастомної авторизації
+        .followRedirects(false)
         .followSslRedirects(false)
         .build()
 
@@ -274,6 +277,5 @@ object RetrofitClient {
             .create(ApiService::class.java)
     }
 
-    // Наш новий WebSocket менеджер, що використовує той самий OkHttpClient
     val webSocketManager = WebSocketManager(okHttpClient)
 }
