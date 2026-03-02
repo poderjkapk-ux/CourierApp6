@@ -75,7 +75,12 @@ data class StatusResponse(
     val message: String? = null
 )
 
-// --- МОДЕЛІ ДЛЯ ЧАТУ (Синхронізовано з app.py) ---
+// Відповідь для перемикача статусу (онлайн/офлайн)
+data class ToggleResponse(
+    @SerializedName("is_online") val isOnline: Boolean
+)
+
+// --- МОДЕЛІ ДЛЯ ЧАТУ ---
 data class ChatMessage(
     @SerializedName("role") val role: String, // "courier" або "partner"
     @SerializedName("text") val text: String, // Текст повідомлення
@@ -95,7 +100,7 @@ data class HistoryOrder(
     val status: String
 )
 
-// --- ОНОВЛЕНА МОДЕЛЬ ПРОФІЛЮ ЗГІДНО ВАШОГО BACKEND (app.py) ---
+// --- МОДЕЛЬ ПРОФІЛЮ ---
 data class CourierProfile(
     val id: Int,
     val name: String,
@@ -103,7 +108,8 @@ data class CourierProfile(
     val balance: Double?,
     @SerializedName("commission_rate") val commissionRate: Double?,
     val rating: Double?,
-    @SerializedName("rating_count") val ratingCount: Int?
+    @SerializedName("rating_count") val ratingCount: Int?,
+    @SerializedName("is_online") val isOnline: Boolean // Додано поле для перевірки статусу при старті
 )
 
 // ==========================================
@@ -180,7 +186,7 @@ interface ApiService {
     @POST("/api/courier/toggle_status")
     suspend fun toggleStatus(
         @Header("Cookie") cookie: String
-    ): ResponseBody
+    ): ToggleResponse // Змінено тип повернення на ToggleResponse для точної синхронізації
 
     // --- МЕТОДИ ЧАТУ ---
 

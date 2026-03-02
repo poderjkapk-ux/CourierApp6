@@ -64,6 +64,7 @@ class MainActivity : ComponentActivity() {
         // Ініціалізація клієнта геолокації
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
 
+        // ИСПРАВЛЕНА ОПЕЧАТКА ЗДЕСЬ: Context.MODE_PRIVATE
         val sharedPref = getSharedPreferences("CourierPrefs", Context.MODE_PRIVATE)
 
         setContent {
@@ -123,11 +124,9 @@ class MainActivity : ComponentActivity() {
                     LaunchedEffect(permissionsState.allPermissionsGranted) {
                         if (!permissionsState.allPermissionsGranted) {
                             permissionsState.launchMultiplePermissionRequest()
-                        } else {
-                            if (savedCookie != null) {
-                                startLocationService()
-                            }
                         }
+                        // Ми більше НЕ запускаємо тут GPS всліпу.
+                        // GPS буде запущено тільки якщо сервер підтвердить, що кур'єр онлайн.
                     }
 
                     val startDestination = if (savedCookie != null) "orders" else "login"
@@ -173,10 +172,8 @@ class MainActivity : ComponentActivity() {
                                                         }
                                                     }
 
-                                                    if (permissionsState.allPermissionsGranted) {
-                                                        startLocationService()
-                                                    }
-
+                                                    // При логіні ми не знаємо статус онлайн/офлайн,
+                                                    // екран "orders" сам його перевірить і запустить GPS за потреби.
                                                     navController.navigate("orders") {
                                                         popUpTo("login") { inclusive = true }
                                                     }
@@ -200,7 +197,10 @@ class MainActivity : ComponentActivity() {
                         composable("orders") {
                             var ordersList by remember { mutableStateOf<List<OpenOrder>>(emptyList()) }
                             var isLoading by remember { mutableStateOf(true) }
-                            var isOnline by remember { mutableStateOf(true) }
+
+                            // За замовчуванням false! Чекаємо відповіді від сервера
+                            var isOnline by remember { mutableStateOf(false) }
+
                             val currentCookie = sharedPref.getString("cookie", "") ?: ""
 
                             // параметри для "тихого" оновлення
@@ -241,7 +241,23 @@ class MainActivity : ComponentActivity() {
                                 }
                             }
 
-                            LaunchedEffect(Unit) { fetchData(isSilent = false) }
+                            // При відкритті екрану завантажуємо реальний профіль і статус
+                            LaunchedEffect(Unit) {
+                                coroutineScope.launch {
+                                    try {
+                                        val profile = RetrofitClient.apiService.getProfile(currentCookie)
+                                        isOnline = profile.isOnline // Отримуємо правдивий статус
+
+                                        // Запускаємо GPS тільки якщо сервер сказав, що ми на смені
+                                        if (isOnline && permissionsState.allPermissionsGranted) {
+                                            startLocationService()
+                                        }
+                                    } catch (e: Exception) {
+                                        Log.e("SYNC", "Не вдалося отримати профіль для перевірки статусу")
+                                    }
+                                }
+                                fetchData(isSilent = false)
+                            }
 
                             // Фонове тихе оновлення кожні 5 секунд
                             LaunchedEffect(Unit) {
@@ -276,13 +292,14 @@ class MainActivity : ComponentActivity() {
                                 onNavigateToProfile = {
                                     navController.navigate("profile") // Перехід на екран профілю
                                 },
-                                onToggleStatus = { newStatus ->
-                                    isOnline = newStatus
+                                onToggleStatus = { _ -> // Ігноруємо UI статус, довіряємо бекенду
                                     coroutineScope.launch {
                                         try {
-                                            RetrofitClient.apiService.toggleStatus(currentCookie)
+                                            // Відправляємо запит на зміну статусу
+                                            val response = RetrofitClient.apiService.toggleStatus(currentCookie)
+                                            isOnline = response.isOnline // Ставимо статус, який повернув сервер
 
-                                            if (newStatus) {
+                                            if (isOnline) {
                                                 if (permissionsState.allPermissionsGranted) {
                                                     startLocationService()
                                                 }
@@ -291,7 +308,7 @@ class MainActivity : ComponentActivity() {
                                                 stopService(serviceIntent)
                                             }
                                         } catch (e: Exception) {
-                                            isOnline = !newStatus
+                                            Toast.makeText(this@MainActivity, "Помилка зв'язку з сервером", Toast.LENGTH_SHORT).show()
                                         }
                                     }
                                 },
