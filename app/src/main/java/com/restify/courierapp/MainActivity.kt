@@ -203,7 +203,7 @@ class MainActivity : ComponentActivity() {
                             var isOnline by remember { mutableStateOf(true) }
                             val currentCookie = sharedPref.getString("cookie", "") ?: ""
 
-                            // ДОДАНО: параметр isSilent для "тихого" оновлення
+                            // параметри для "тихого" оновлення
                             fun fetchData(isSilent: Boolean = false) {
                                 if (!isSilent) isLoading = true
                                 coroutineScope.launch {
@@ -243,7 +243,7 @@ class MainActivity : ComponentActivity() {
 
                             LaunchedEffect(Unit) { fetchData(isSilent = false) }
 
-                            // ДОДАНО: Фонове тихе оновлення кожні 5 секунд
+                            // Фонове тихе оновлення кожні 5 секунд
                             LaunchedEffect(Unit) {
                                 while (true) {
                                     kotlinx.coroutines.delay(5000)
@@ -272,6 +272,9 @@ class MainActivity : ComponentActivity() {
                                 isOnline = isOnline,
                                 onNavigateToHistory = {
                                     navController.navigate("history")
+                                },
+                                onNavigateToProfile = {
+                                    navController.navigate("profile") // Перехід на екран профілю
                                 },
                                 onToggleStatus = { newStatus ->
                                     isOnline = newStatus
@@ -382,6 +385,43 @@ class MainActivity : ComponentActivity() {
                                 onRefresh = { fetchHistory() }
                             )
                         }
+
+                        // РОУТ 5: ПРОФІЛЬ КУР'ЄРА
+                        composable("profile") {
+                            var profileData by remember { mutableStateOf<CourierProfile?>(null) }
+                            var isLoading by remember { mutableStateOf(true) }
+                            val currentCookie = sharedPref.getString("cookie", "") ?: ""
+
+                            LaunchedEffect(Unit) {
+                                coroutineScope.launch {
+                                    try {
+                                        profileData = RetrofitClient.apiService.getProfile(currentCookie)
+                                    } catch (e: Exception) {
+                                        Toast.makeText(this@MainActivity, "Помилка завантаження профілю", Toast.LENGTH_SHORT).show()
+                                    } finally {
+                                        isLoading = false
+                                    }
+                                }
+                            }
+
+                            ProfileScreen(
+                                profile = profileData,
+                                isLoading = isLoading,
+                                onBack = { navController.popBackStack() },
+                                onLogout = {
+                                    // Логіка виходу
+                                    sharedPref.edit().remove("cookie").apply()
+                                    RetrofitClient.webSocketManager.disconnect()
+                                    // Зупиняємо GPS трекер, якщо він працює
+                                    stopService(Intent(this@MainActivity, LocationTracker::class.java))
+
+                                    navController.navigate("login") {
+                                        popUpTo(0) { inclusive = true } // Очищаємо весь стек
+                                    }
+                                }
+                            )
+                        }
+
                     }
                 }
             }

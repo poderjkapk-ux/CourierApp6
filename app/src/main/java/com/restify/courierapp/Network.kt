@@ -47,7 +47,7 @@ data class ActiveJobDetail(
     @SerializedName("server_status") val serverStatus: String,
     @SerializedName("is_ready") val isReady: Boolean,
 
-    // --- НОВІ ПОЛЯ ДЛЯ ТАЙМЕРІВ ---
+    // --- ПОЛЯ ДЛЯ ТАЙМЕРІВ ---
     @SerializedName("assigned_at") val assignedAt: String?,
     @SerializedName("picked_up_at") val pickedUpAt: String?,
     @SerializedName("delivered_at") val deliveredAt: String?,
@@ -76,7 +76,6 @@ data class StatusResponse(
 )
 
 // --- МОДЕЛІ ДЛЯ ЧАТУ (Синхронізовано з app.py) ---
-
 data class ChatMessage(
     @SerializedName("role") val role: String, // "courier" або "partner"
     @SerializedName("text") val text: String, // Текст повідомлення
@@ -87,13 +86,24 @@ data class SendMessageResponse(
     val status: String
 )
 
-// --- НОВА МОДЕЛЬ ДЛЯ ІСТОРІЇ ЗАМОВЛЕНЬ ---
+// --- МОДЕЛЬ ДЛЯ ІСТОРІЇ ЗАМОВЛЕНЬ ---
 data class HistoryOrder(
     val id: Int,
     val date: String,
     val address: String,
     val price: Double,
     val status: String
+)
+
+// --- ОНОВЛЕНА МОДЕЛЬ ПРОФІЛЮ ЗГІДНО ВАШОГО BACKEND (app.py) ---
+data class CourierProfile(
+    val id: Int,
+    val name: String,
+    val phone: String,
+    val balance: Double?,
+    @SerializedName("commission_rate") val commissionRate: Double?,
+    val rating: Double?,
+    @SerializedName("rating_count") val ratingCount: Int?
 )
 
 // ==========================================
@@ -191,11 +201,17 @@ interface ApiService {
         @Field("role") role: String = "courier"
     ): SendMessageResponse
 
-    // --- НОВИЙ МЕТОД ДЛЯ ІСТОРІЇ ЗАМОВЛЕНЬ ---
+    // --- МЕТОД ДЛЯ ІСТОРІЇ ЗАМОВЛЕНЬ ---
     @GET("/api/courier/history")
     suspend fun getHistory(
         @Header("Cookie") cookie: String
     ): List<HistoryOrder>
+
+    // --- МЕТОД: ОТРИМАТИ ПРОФІЛЬ КУР'ЄРА ---
+    @GET("/api/courier/profile")
+    suspend fun getProfile(
+        @Header("Cookie") cookie: String
+    ): CourierProfile
 }
 
 // ==========================================

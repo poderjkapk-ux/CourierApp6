@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material.icons.outlined.Info
@@ -353,6 +354,7 @@ fun OrdersListScreen(
     onAcceptOrder: (Int) -> Unit,
     onRefresh: () -> Unit,
     onNavigateToHistory: () -> Unit,
+    onNavigateToProfile: () -> Unit,
     isLoading: Boolean
 ) {
     LaunchedEffect(Unit) {
@@ -381,6 +383,9 @@ fun OrdersListScreen(
                     Spacer(modifier = Modifier.width(8.dp))
                     IconButton(onClick = onNavigateToHistory) {
                         Icon(Icons.Default.DateRange, contentDescription = "Історія", tint = AppColors.Primary)
+                    }
+                    IconButton(onClick = onNavigateToProfile) {
+                        Icon(Icons.Default.Person, contentDescription = "Профіль", tint = AppColors.Primary)
                     }
                     Card(
                         shape = RoundedCornerShape(50),
@@ -1153,6 +1158,134 @@ fun HistoryScreen(
     }
 }
 
+// ==========================================
+// 5. ЕКРАН ПРОФІЛЮ (Profile Screen)
+// ==========================================
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ProfileScreen(
+    profile: CourierProfile?,
+    isLoading: Boolean,
+    onBack: () -> Unit,
+    onLogout: () -> Unit
+) {
+    Scaffold(
+        containerColor = AppColors.Background,
+        topBar = {
+            TopAppBar(
+                title = { Text("Мій профіль", fontWeight = FontWeight.ExtraBold, fontSize = 22.sp) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Назад", tint = AppColors.Primary)
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = AppColors.Background)
+            )
+        }
+    ) { padding ->
+        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
+            if (isLoading) {
+                CircularProgressIndicator(
+                    color = AppColors.Primary,
+                    modifier = Modifier.align(Alignment.Center)
+                )
+            } else if (profile != null) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    // Аватарка
+                    Box(
+                        modifier = Modifier
+                            .size(100.dp)
+                            .background(
+                                Brush.linearGradient(listOf(AppColors.Primary, AppColors.Secondary)),
+                                CircleShape
+                            )
+                            .shadow(8.dp, CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(Icons.Default.Person, contentDescription = null, tint = Color.White, modifier = Modifier.size(60.dp))
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(profile.name, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = AppColors.TextPrimary)
+                    Text(profile.phone, fontSize = 16.sp, color = AppColors.TextSecondary, fontWeight = FontWeight.Medium)
+
+                    Spacer(modifier = Modifier.height(32.dp))
+
+                    // Карточка со статистикой (Комиссия, Рейтинг, Баланс)
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .shadow(8.dp, RoundedCornerShape(24.dp), spotColor = Color.Black.copy(alpha = 0.05f)),
+                        shape = RoundedCornerShape(24.dp),
+                        colors = CardDefaults.cardColors(containerColor = AppColors.Surface)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(24.dp),
+                            horizontalArrangement = Arrangement.SpaceEvenly
+                        ) {
+                            // КОМИССИЯ
+                            ProfileStatItem("Комісія", "${profile.commissionRate ?: 0.0}%", AppColors.Primary)
+                            Box(modifier = Modifier.width(1.dp).height(40.dp).background(Color.LightGray.copy(alpha = 0.5f)))
+
+                            // РЕЙТИНГ
+                            ProfileStatItem("Рейтинг", profile.rating?.toString() ?: "5.0", AppColors.Warning)
+                            Box(modifier = Modifier.width(1.dp).height(40.dp).background(Color.LightGray.copy(alpha = 0.5f)))
+
+                            // БАЛАНС
+                            ProfileStatItem("Баланс", "${profile.balance ?: 0.0} ₴", AppColors.Secondary)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    // Карточка с дополнительной информацией (Отзывы)
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(containerColor = AppColors.Surface),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(20.dp)) {
+                            AddressItem(icon = Icons.Outlined.Info, text = "Отримано відгуків: ${profile.ratingCount ?: 0}", label = "Статистика")
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.weight(1f))
+
+                    // Кнопка выхода
+                    OutlinedButton(
+                        onClick = onLogout,
+                        modifier = Modifier.fillMaxWidth().height(56.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        border = BorderStroke(2.dp, AppColors.Error),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = AppColors.Error)
+                    ) {
+                        Text("Вийти з акаунта", fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                    }
+                    Spacer(modifier = Modifier.height(20.dp))
+                }
+            } else {
+                Text("Помилка завантаження профілю", modifier = Modifier.align(Alignment.Center), color = AppColors.Error)
+            }
+        }
+    }
+}
+
+// Компонент для отображения элемента статистики (цифра + подпись)
+@Composable
+fun ProfileStatItem(label: String, value: String, color: Color) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(value, fontSize = 22.sp, fontWeight = FontWeight.Black, color = color)
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(label, fontSize = 12.sp, color = AppColors.TextSecondary, fontWeight = FontWeight.Bold)
+    }
+}
+
+// Карточка истории заказов (оставлена внизу, чтобы не было ошибки компиляции)
 @Composable
 fun HistoryOrderCard(order: HistoryOrder) {
     val isDelivered = order.status == "delivered"
