@@ -13,6 +13,9 @@ import android.os.Looper
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.google.android.gms.location.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class LocationTracker : Service() {
 
@@ -43,7 +46,7 @@ class LocationTracker : Service() {
         // Запускаємо службу на передньому плані (з постійним сповіщенням)
         startForeground(NOTIFICATION_ID, createNotification())
 
-        // Налаштовуємо частоту оновлення GPS (кожні 15 секунд)
+        // Налаштовуємо частоту оновлення GPS (кожні 10-15 секунд)
         val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 15000)
             .setMinUpdateIntervalMillis(10000)
             .build()
@@ -59,12 +62,30 @@ class LocationTracker : Service() {
     }
 
     private fun sendLocationToServer(lat: Double, lon: Double) {
-        try {
-            // --- НОВОЕ: Відправляємо координати через швидкий WebSocket замість REST API ---
-            RetrofitClient.webSocketManager.sendLocation(lat, lon)
-            Log.d("LocationTracker", "Відправлено GPS через WS: $lat, $lon")
-        } catch (e: Exception) {
-            Log.e("LocationTracker", "Помилка відправки GPS через WS: ${e.message}")
+        val sharedPref = getSharedPreferences("CourierPrefs", Context.MODE_PRIVATE)
+        val cookie = sharedPref.getString("cookie", null)
+
+        if (cookie != null) {
+            // 1. ШВИДКА ВІДПРАВКА: через WebSocket (для миттєвого відображення, якщо WS підключений)
+            try {
+                RetrofitClient.webSocketManager.sendLocation(lat, lon)
+                Log.d("LocationTracker", "Відправлено GPS через WS: $lat, $lon")
+            } catch (e: Exception) {
+                Log.e("LocationTracker", "Помилка відправки GPS через WS: ${e.message}")
+            }
+
+            // 2. НАДІЙНА ВІДПРАВКА: через звичайний REST API POST-запит
+            // Запускаємо в окремому фоновому потоці (IO Dispatcher), щоб не блокувати GPS-сервіс
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val response = RetrofitClient.apiService.sendLocation(cookie, lat, lon)
+                    Log.d("LocationTracker", "Відправлено GPS через REST API: $lat, $lon (Status: ${response.status})")
+                } catch (e: Exception) {
+                    Log.e("LocationTracker", "Помилка REST API: ${e.message}")
+                }
+            }
+        } else {
+            Log.e("LocationTracker", "Помилка: Немає збереженого токену (Cookie)")
         }
     }
 
@@ -96,7 +117,6 @@ class LocationTracker : Service() {
         fusedLocationClient.removeLocationUpdates(locationCallback)
     }
 
-    // Цей метод потрібен для архітектури Service, але в нашому випадку він не використовується
     override fun onBind(intent: Intent?): IBinder? {
         return null
     }
