@@ -838,7 +838,9 @@ fun OrderDetailsView(
                                     Card(
                                         shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = AppColors.Primary.copy(alpha = 0.1f)),
                                         modifier = Modifier.size(52.dp).clip(RoundedCornerShape(16.dp)).clickable {
-                                            try { context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:${job.partnerPhone}"))) } catch (e: Exception) {}
+                                            val phone = job.partnerPhone.replace("+", "")
+                                            val formattedPhone = if (phone.startsWith("380")) phone.substring(2) else phone
+                                            try { context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$formattedPhone"))) } catch (e: Exception) {}
                                         }
                                     ) {
                                         Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
@@ -898,7 +900,9 @@ fun OrderDetailsView(
                                 Card(
                                     shape = RoundedCornerShape(16.dp), colors = CardDefaults.cardColors(containerColor = AppColors.Primary.copy(alpha = 0.1f)),
                                     modifier = Modifier.size(52.dp).clip(RoundedCornerShape(16.dp)).clickable {
-                                        try { context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:${job.customerPhone}"))) } catch (e: Exception) {}
+                                        val phone = job.customerPhone.toString().replace("+", "")
+                                        val formattedPhone = if (phone.startsWith("380")) phone.substring(2) else phone
+                                        try { context.startActivity(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$formattedPhone"))) } catch (e: Exception) {}
                                     }
                                 ) {
                                     Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
