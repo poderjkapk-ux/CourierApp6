@@ -4,8 +4,10 @@ import android.util.Log
 import com.google.gson.annotations.SerializedName
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody
 import okhttp3.Response
 import okhttp3.ResponseBody
 import okhttp3.WebSocket
@@ -112,6 +114,22 @@ data class CourierProfile(
     @SerializedName("is_online") val isOnline: Boolean // Додано поле для перевірки статусу при старті
 )
 
+// --- НОВІ МОДЕЛІ ДЛЯ РЕЄСТРАЦІЇ ---
+data class VerificationInitResponse(
+    val token: String,
+    val link: String
+)
+
+data class VerificationCheckResponse(
+    val status: String,
+    val phone: String?
+)
+
+data class RegisterResponse(
+    val status: String,
+    val detail: String?
+)
+
 // ==========================================
 // 2. ІНТЕРФЕЙС API (Retrofit)
 // ==========================================
@@ -186,7 +204,7 @@ interface ApiService {
     @POST("/api/courier/toggle_status")
     suspend fun toggleStatus(
         @Header("Cookie") cookie: String
-    ): ToggleResponse // Змінено тип повернення на ToggleResponse для точної синхронізації
+    ): ToggleResponse
 
     // --- МЕТОДИ ЧАТУ ---
 
@@ -218,6 +236,25 @@ interface ApiService {
     suspend fun getProfile(
         @Header("Cookie") cookie: String
     ): CourierProfile
+
+    // --- НОВІ МЕТОДИ ДЛЯ РЕЄСТРАЦІЇ ---
+    @POST("/api/auth/init_verification")
+    suspend fun initVerification(): retrofit2.Response<VerificationInitResponse>
+
+    @GET("/api/auth/check_verification/{token}")
+    suspend fun checkVerification(
+        @Path("token") token: String
+    ): retrofit2.Response<VerificationCheckResponse>
+
+    @Multipart
+    @POST("/api/courier/register")
+    suspend fun registerCourier(
+        @Part("name") name: RequestBody,
+        @Part("password") password: RequestBody,
+        @Part("verification_token") verificationToken: RequestBody,
+        @Part documentPhoto: MultipartBody.Part,
+        @Part selfiePhoto: MultipartBody.Part
+    ): retrofit2.Response<RegisterResponse>
 }
 
 // ==========================================

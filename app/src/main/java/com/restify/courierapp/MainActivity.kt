@@ -65,7 +65,6 @@ class MainActivity : ComponentActivity() {
         // Ініціалізація клієнта геолокації
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
 
-        // ИСПРАВЛЕНА ОПЕЧАТКА ЗДЕСЬ: Context.MODE_PRIVATE
         val sharedPref = getSharedPreferences("CourierPrefs", Context.MODE_PRIVATE)
 
         setContent {
@@ -145,6 +144,9 @@ class MainActivity : ComponentActivity() {
                             LoginScreen(
                                 isLoading = isLoading,
                                 errorMessage = errorMessage,
+                                onNavigateToRegister = {
+                                    navController.navigate("register")
+                                },
                                 onLoginClick = { phone, password ->
                                     isLoading = true
                                     errorMessage = null
@@ -176,8 +178,6 @@ class MainActivity : ComponentActivity() {
                                                         }
                                                     }
 
-                                                    // При логіні ми не знаємо статус онлайн/офлайн,
-                                                    // екран "orders" сам його перевірить і запустить GPS за потреби.
                                                     navController.navigate("orders") {
                                                         popUpTo("login") { inclusive = true }
                                                     }
@@ -193,6 +193,21 @@ class MainActivity : ComponentActivity() {
                                             isLoading = false
                                         }
                                     }
+                                }
+                            )
+                        }
+
+                        // РОУТ 1.5: РЕЄСТРАЦІЯ
+                        composable("register") {
+                            RegistrationScreen(
+                                onRegisterSuccess = {
+                                    Toast.makeText(this@MainActivity, "Реєстрація успішна! Очікуйте активації акаунта адміністратором.", Toast.LENGTH_LONG).show()
+                                    navController.navigate("login") {
+                                        popUpTo("register") { inclusive = true }
+                                    }
+                                },
+                                onBackToLogin = {
+                                    navController.popBackStack()
                                 }
                             )
                         }

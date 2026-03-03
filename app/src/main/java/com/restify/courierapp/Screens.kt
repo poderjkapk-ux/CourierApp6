@@ -1,8 +1,11 @@
 package com.restify.courierapp
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -14,10 +17,13 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Call
@@ -54,7 +60,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import okhttp3.MediaType
+import okhttp3.MultipartBody
+import okhttp3.RequestBody
 import org.json.JSONObject
+import java.io.File
+import java.io.FileOutputStream
+import java.io.InputStream
 import java.text.SimpleDateFormat
 import java.time.Duration
 import java.time.Instant
@@ -280,6 +292,7 @@ fun StepTimer(
 @Composable
 fun LoginScreen(
     onLoginClick: (String, String) -> Unit,
+    onNavigateToRegister: () -> Unit,
     isLoading: Boolean,
     errorMessage: String?
 ) {
@@ -337,9 +350,250 @@ fun LoginScreen(
 
                 Spacer(modifier = Modifier.height(36.dp))
                 ModernButton(text = "Увійти", onClick = { onLoginClick(phone, password) }, modifier = Modifier.fillMaxWidth(), isLoading = isLoading, enabled = phone.isNotBlank() && password.isNotBlank(), icon = Icons.Default.ArrowForward)
+
+                Spacer(modifier = Modifier.height(16.dp))
+                TextButton(onClick = onNavigateToRegister) {
+                    Text("Немає акаунту? Зареєструватися", color = AppColors.Primary, fontWeight = FontWeight.SemiBold)
+                }
             }
         }
     }
+}
+
+// ==========================================
+// 1.5. ЕКРАН РЕЄСТРАЦІЇ
+// ==========================================
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun RegistrationScreen(onRegisterSuccess: () -> Unit, onBackToLogin: () -> Unit) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val scrollState = rememberScrollState()
+
+    var name by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var verificationToken by remember { mutableStateOf<String?>(null) }
+    var isPhoneVerified by remember { mutableStateOf(false) }
+    var phoneFromServer by remember { mutableStateOf("") }
+    var documentUri by remember { mutableStateOf<Uri?>(null) }
+    var selfieUri by remember { mutableStateOf<Uri?>(null) }
+
+    var isLoading by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    val docPicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> documentUri = uri }
+    val selfiePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri -> selfieUri = uri }
+
+    Scaffold(
+        containerColor = AppColors.Background,
+        topBar = {
+            TopAppBar(
+                title = { Text("Стати кур'єром", fontWeight = FontWeight.Bold, color = AppColors.TextPrimary) },
+                navigationIcon = {
+                    IconButton(onClick = onBackToLogin) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Назад", tint = AppColors.Primary)
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = AppColors.Background)
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(horizontal = 24.dp)
+                .verticalScroll(scrollState),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Box(modifier = Modifier.size(32.dp).clip(CircleShape).background(if (isPhoneVerified) AppColors.Secondary else AppColors.Primary), contentAlignment = Alignment.Center) {
+                    if (isPhoneVerified) Icon(Icons.Rounded.CheckCircle, null, tint = Color.White, modifier = Modifier.size(20.dp))
+                    else Text("1", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+                Box(modifier = Modifier.width(40.dp).height(2.dp).background(if (isPhoneVerified) AppColors.Secondary else Color.LightGray))
+                Box(modifier = Modifier.size(32.dp).clip(CircleShape).background(if (isPhoneVerified) AppColors.Primary else Color.LightGray), contentAlignment = Alignment.Center) {
+                    Text("2", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+
+            if (!isPhoneVerified) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.cardColors(containerColor = AppColors.Surface),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                ) {
+                    Column(modifier = Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Default.Call, null, modifier = Modifier.size(48.dp), tint = AppColors.Primary)
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text("Підтвердження номеру", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = AppColors.TextPrimary)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Для безпеки нам потрібно підтвердити ваш номер через нашого Telegram бота.", textAlign = TextAlign.Center, color = AppColors.TextSecondary, fontSize = 14.sp)
+                        Spacer(modifier = Modifier.height(24.dp))
+
+                        ModernButton(
+                            text = "Відкрити Telegram",
+                            isLoading = isLoading,
+                            onClick = {
+                                coroutineScope.launch {
+                                    isLoading = true
+                                    errorMessage = null
+                                    try {
+                                        val res = RetrofitClient.apiService.initVerification()
+                                        if (res.isSuccessful && res.body() != null) {
+                                            verificationToken = res.body()!!.token
+                                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(res.body()!!.link)))
+
+                                            while (!isPhoneVerified) {
+                                                delay(3000)
+                                                val check = RetrofitClient.apiService.checkVerification(verificationToken!!)
+                                                if (check.isSuccessful && check.body()?.status == "verified") {
+                                                    isPhoneVerified = true
+                                                    phoneFromServer = check.body()?.phone ?: ""
+                                                    break
+                                                }
+                                            }
+                                        } else { errorMessage = "Сервер недоступний" }
+                                    } catch (e: Exception) { errorMessage = "Помилка мережі" }
+                                    finally { isLoading = false }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            } else {
+                Text(
+                    text = "Номер підтверджено: $phoneFromServer",
+                    color = AppColors.Secondary,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(24.dp))
+
+                ModernTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = "Ваше Ім'я"
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+
+                ModernTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = "Придумайте пароль",
+                    visualTransformation = PasswordVisualTransformation()
+                )
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Text("Документи", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = AppColors.TextPrimary)
+                Text("Завантажте чіткі фото для перевірки", fontSize = 14.sp, color = AppColors.TextSecondary)
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Row(modifier = Modifier.fillMaxWidth()) {
+                    Column(
+                        modifier = Modifier.weight(1f).height(100.dp).clip(RoundedCornerShape(16.dp))
+                            .background(if (documentUri != null) AppColors.Secondary.copy(alpha = 0.1f) else Color.Transparent)
+                            .border(2.dp, if (documentUri != null) AppColors.Secondary else Color.LightGray, RoundedCornerShape(16.dp))
+                            .clickable { docPicker.launch("image/*") },
+                        verticalArrangement = Arrangement.Center,
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(if (documentUri != null) Icons.Rounded.CheckCircle else Icons.Default.Add, contentDescription = null, tint = if (documentUri != null) AppColors.Secondary else Color.Gray)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Фото ID/Паспорт", fontSize = 12.sp, textAlign = TextAlign.Center, fontWeight = FontWeight.Medium, color = AppColors.TextPrimary)
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(
+                        modifier = Modifier.weight(1f).height(100.dp).clip(RoundedCornerShape(16.dp))
+                            .background(if (selfieUri != null) AppColors.Secondary.copy(alpha = 0.1f) else Color.Transparent)
+                            .border(2.dp, if (selfieUri != null) AppColors.Secondary else Color.LightGray, RoundedCornerShape(16.dp))
+                            .clickable { selfiePicker.launch("image/*") },
+                        verticalArrangement = Arrangement.Center,
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(if (selfieUri != null) Icons.Rounded.CheckCircle else Icons.Default.Person, contentDescription = null, tint = if (selfieUri != null) AppColors.Secondary else Color.Gray)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Ваше Селфі", fontSize = 12.sp, textAlign = TextAlign.Center, fontWeight = FontWeight.Medium, color = AppColors.TextPrimary)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(32.dp))
+
+                ModernButton(
+                    text = "Відправити заявку",
+                    isLoading = isLoading,
+                    onClick = {
+                        if (name.isBlank() || password.isBlank() || documentUri == null || selfieUri == null) {
+                            errorMessage = "Заповніть всі дані та додайте фотографії"
+                        } else {
+                            coroutineScope.launch {
+                                isLoading = true
+                                try {
+                                    val textMediaType = MediaType.parse("text/plain")
+                                    val nameReq = RequestBody.create(textMediaType, name)
+                                    val passReq = RequestBody.create(textMediaType, password)
+                                    val tokenReq = RequestBody.create(textMediaType, verificationToken!!)
+
+                                    val docPart = prepareFilePart(context, "document_photo", documentUri!!)
+                                    val selfiePart = prepareFilePart(context, "selfie_photo", selfieUri!!)
+
+                                    if (docPart != null && selfiePart != null) {
+                                        val res = RetrofitClient.apiService.registerCourier(
+                                            nameReq, passReq, tokenReq, docPart, selfiePart
+                                        )
+                                        if (res.isSuccessful) onRegisterSuccess()
+                                        else errorMessage = "Помилка відправки даних на сервер"
+                                    } else {
+                                        errorMessage = "Помилка обробки файлів"
+                                    }
+                                } catch (e: Exception) { errorMessage = "Помилка мережі при відправці" }
+                                finally { isLoading = false }
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            errorMessage?.let {
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth().background(AppColors.Error.copy(alpha = 0.1f), RoundedCornerShape(12.dp)).padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Outlined.Info, contentDescription = null, tint = AppColors.Error, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(it, color = AppColors.Error, fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+        }
+    }
+}
+
+fun prepareFilePart(context: Context, partName: String, fileUri: Uri): MultipartBody.Part? {
+    return try {
+        val inputStream: InputStream? = context.contentResolver.openInputStream(fileUri)
+        val tempFile = File(context.cacheDir, "${partName}_temp.jpg")
+        val outputStream = FileOutputStream(tempFile)
+        inputStream?.copyTo(outputStream)
+        val requestFile = RequestBody.create(MediaType.parse("image/*"), tempFile)
+        MultipartBody.Part.createFormData(partName, tempFile.name, requestFile)
+    } catch (e: Exception) { null }
 }
 
 // ==========================================
@@ -1289,7 +1543,7 @@ fun ProfileStatItem(label: String, value: String, color: Color) {
     }
 }
 
-// Карточка истории заказов (оставлена внизу, чтобы не было ошибки компиляции)
+// Карточка истории заказов
 @Composable
 fun HistoryOrderCard(order: HistoryOrder) {
     val isDelivered = order.status == "delivered"
