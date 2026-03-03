@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -76,6 +77,9 @@ class MainActivity : ComponentActivity() {
                     val navController = rememberNavController()
                     val coroutineScope = rememberCoroutineScope()
                     val savedCookie = sharedPref.getString("cookie", null)
+
+                    // ГЛОБАЛЬНАЯ ПЕРЕМЕННАЯ СТАТУСА: Теперь статус не теряется при переходах!
+                    var isOnline by rememberSaveable { mutableStateOf(false) }
 
                     // --- Управління життєвим циклом WebSocket та FCM-токеном ---
                     LaunchedEffect(Unit) {
@@ -197,9 +201,6 @@ class MainActivity : ComponentActivity() {
                         composable("orders") {
                             var ordersList by remember { mutableStateOf<List<OpenOrder>>(emptyList()) }
                             var isLoading by remember { mutableStateOf(true) }
-
-                            // За замовчуванням false! Чекаємо відповіді від сервера
-                            var isOnline by remember { mutableStateOf(false) }
 
                             val currentCookie = sharedPref.getString("cookie", "") ?: ""
 
