@@ -678,8 +678,10 @@ fun OrderCard(order: OpenOrder, onAcceptClick: (Int) -> Unit) {
     var isAccepting by remember { mutableStateOf(false) }
     var expanded by remember { mutableStateOf(false) }
 
+    // --- ОНОВЛЕНО ТИПИ ОПЛАТИ ---
     val paymentInfo = when (order.paymentType) {
         "prepaid" -> Pair("✅ Оплачено", AppColors.Secondary)
+        "buyout_paid" -> Pair("✅ Оплачено", AppColors.Secondary) // Додано обробку buyout_paid
         "cash" -> Pair("💵 Готівка", AppColors.Warning)
         "buyout" -> Pair("💰 Викуп", AppColors.Error)
         else -> Pair(order.paymentType, AppColors.Primary)
@@ -1024,8 +1026,10 @@ fun OrderDetailsView(
                                 }
                             }
 
+                            // --- ОНОВЛЕННЯ ЛОГІКИ ПІДКАЗОК ДЛЯ КУР'ЄРА ---
                             val paymentInfo = when (job.paymentType) {
                                 "prepaid" -> Pair("✅ ОПЛАЧЕНО (Гроші не беремо)", AppColors.Secondary)
+                                "buyout_paid" -> Pair("✅ ОПЛАЧЕНО ЗАКЛАДОМ (Візьміть у клієнта: ${job.orderPrice} ₴)", AppColors.Secondary) // Додано обробку buyout_paid
                                 "cash" -> Pair("💵 ГОТІВКА (Взяти ${job.orderPrice} ₴)", AppColors.Warning)
                                 "buyout" -> Pair("💰 ВИКУП (Викупити за ${job.orderPrice} ₴)", AppColors.Error)
                                 else -> Pair("Оплата: ${job.paymentType}", AppColors.Primary)
