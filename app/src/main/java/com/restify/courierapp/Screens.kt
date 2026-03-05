@@ -678,10 +678,9 @@ fun OrderCard(order: OpenOrder, onAcceptClick: (Int) -> Unit) {
     var isAccepting by remember { mutableStateOf(false) }
     var expanded by remember { mutableStateOf(false) }
 
-    // --- ОНОВЛЕНО ТИПИ ОПЛАТИ ---
     val paymentInfo = when (order.paymentType) {
         "prepaid" -> Pair("✅ Оплачено", AppColors.Secondary)
-        "buyout_paid" -> Pair("✅ Оплачено", AppColors.Secondary) // Додано обробку buyout_paid
+        "buyout_paid" -> Pair("✅ Оплачено", AppColors.Secondary)
         "cash" -> Pair("💵 Готівка", AppColors.Warning)
         "buyout" -> Pair("💰 Викуп", AppColors.Error)
         else -> Pair(order.paymentType, AppColors.Primary)
@@ -750,7 +749,7 @@ fun OrderCard(order: OpenOrder, onAcceptClick: (Int) -> Unit) {
                 if (order.paymentType == "buyout") {
                     Box(modifier = Modifier.fillMaxWidth().background(AppColors.Error.copy(alpha = 0.1f), RoundedCornerShape(12.dp)).padding(12.dp)) {
                         Text(
-                            text = "Сума викупу: ${order.price} ₴ (Ви сплачуєте цю суму в закладі, а клієнт повертає її вам при доставці)",
+                            text = "Увага: Ви маєте забрати ${order.price} ₴ у клієнта та повернути їх у заклад після доставки.",
                             color = AppColors.Error, fontSize = 14.sp, fontWeight = FontWeight.Bold
                         )
                     }
@@ -1029,9 +1028,9 @@ fun OrderDetailsView(
                             // --- ОНОВЛЕННЯ ЛОГІКИ ПІДКАЗОК ДЛЯ КУР'ЄРА ---
                             val paymentInfo = when (job.paymentType) {
                                 "prepaid" -> Pair("✅ ОПЛАЧЕНО (Гроші не беремо)", AppColors.Secondary)
-                                "buyout_paid" -> Pair("✅ ОПЛАЧЕНО ЗАКЛАДОМ (Візьміть у клієнта: ${job.orderPrice} ₴)", AppColors.Secondary) // Додано обробку buyout_paid
+                                "buyout_paid" -> Pair("✅ ОПЛАЧЕНО В ЗАКЛАДі (Свої гроші: ${job.orderPrice} ₴)", AppColors.Secondary)
                                 "cash" -> Pair("💵 ГОТІВКА (Взяти ${job.orderPrice} ₴)", AppColors.Warning)
-                                "buyout" -> Pair("💰 ВИКУП (Викупити за ${job.orderPrice} ₴)", AppColors.Error)
+                                "buyout" -> Pair("💰 ЗАБЕРІТЬ У КЛІЄНТА: ${job.orderPrice} ₴ (Везіть у заклад)", AppColors.Error)
                                 else -> Pair("Оплата: ${job.paymentType}", AppColors.Primary)
                             }
 
@@ -1173,7 +1172,7 @@ fun OrderDetailsView(
                 }
 
                 // --- КАРТКА ПОВЕРНЕННЯ КОШТІВ ---
-                if (job.isReturnRequired && isStep2Done) {
+                if ((job.isReturnRequired || job.paymentType == "buyout") && isStep2Done) {
                     val isStep3Active = job.serverStatus == "returning"
                     item {
                         Card(
@@ -1228,8 +1227,11 @@ fun OrderDetailsView(
             when (job.serverStatus) {
                 "assigned" -> ModernButton("Я в закладі", { isActionLoading = true; onArrivedPickup(job.id) }, Modifier.fillMaxWidth(), backgroundColor = AppColors.Primary, isLoading = isActionLoading)
                 "arrived_pickup", "ready" -> ModernButton("Забрав замовлення", { isActionLoading = true; onUpdateStatus(job.id, "picked_up") }, Modifier.fillMaxWidth(), backgroundColor = AppColors.Secondary, isLoading = isActionLoading)
-                "picked_up" -> ModernButton("Успішно доставлено", { isActionLoading = true; onUpdateStatus(job.id, "delivered") }, Modifier.fillMaxWidth(), backgroundColor = AppColors.Secondary, isLoading = isActionLoading)
-                "returning" -> Text("Очікування підтвердження повернення...", modifier = Modifier.align(Alignment.Center).padding(8.dp), color = AppColors.TextSecondary, textAlign = TextAlign.Center, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                "picked_up" -> {
+                    val btnText = if (job.isReturnRequired || job.paymentType == "buyout") "Забрав гроші (Везу в заклад)" else "Успішно доставлено"
+                    ModernButton(btnText, { isActionLoading = true; onUpdateStatus(job.id, "delivered") }, Modifier.fillMaxWidth(), backgroundColor = AppColors.Secondary, isLoading = isActionLoading)
+                }
+                "returning" -> ModernButton("Гроші віддав", { Toast.makeText(context, "Чекайте підтвердження від закладу. Заклад має натиснути кнопку у себе в кабінеті.", Toast.LENGTH_LONG).show() }, Modifier.fillMaxWidth(), backgroundColor = AppColors.Warning, isLoading = false)
             }
         }
     }
