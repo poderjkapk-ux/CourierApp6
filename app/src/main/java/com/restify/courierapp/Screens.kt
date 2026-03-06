@@ -611,21 +611,6 @@ fun OrdersListScreen(
     onNavigateToProfile: () -> Unit,
     isLoading: Boolean
 ) {
-    LaunchedEffect(Unit) {
-        RetrofitClient.webSocketManager.messages.collect { messageJson ->
-            try {
-                val json = JSONObject(messageJson)
-                val type = json.optString("type")
-                if (type == "new_order" || type == "job_update") {
-                    delay(500)
-                    onRefresh()
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-    }
-
     Scaffold(
         containerColor = AppColors.Background,
         topBar = {
@@ -912,21 +897,6 @@ fun OrderDetailsView(
     val scope = rememberCoroutineScope()
     var isRefreshing by remember { mutableStateOf(false) }
     var isActionLoading by remember(job.serverStatus) { mutableStateOf(false) }
-
-    LaunchedEffect(Unit) {
-        RetrofitClient.webSocketManager.messages.collect { messageJson ->
-            try {
-                val json = JSONObject(messageJson)
-                val type = json.optString("type")
-                if (type == "job_ready" || type == "job_update") {
-                    delay(500)
-                    onRefresh()
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
-            }
-        }
-    }
 
     val handleRefresh: () -> Unit = {
         scope.launch {

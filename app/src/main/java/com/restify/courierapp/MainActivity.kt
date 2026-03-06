@@ -287,10 +287,10 @@ class MainActivity : ComponentActivity() {
                                 fetchData(isSilent = false)
                             }
 
-                            // Фонове тихе оновлення кожні 5 секунд
+                            // Фонове тихе оновлення (Збільшено до 30 секунд як fallback)
                             LaunchedEffect(Unit) {
                                 while (true) {
-                                    kotlinx.coroutines.delay(5000)
+                                    kotlinx.coroutines.delay(30000) // <--- ЗМІНЕНО: тепер 30 секунд замість 5
                                     fetchData(isSilent = true)
                                 }
                             }
