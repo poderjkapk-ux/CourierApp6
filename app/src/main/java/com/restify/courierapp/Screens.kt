@@ -730,11 +730,11 @@ fun OrderCard(order: OpenOrder, onAcceptClick: (Int) -> Unit) {
                 HorizontalDivider(color = Color.LightGray.copy(alpha = 0.3f))
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Інформація про ВИКУП
+                // ВИПРАВЛЕНО ТЕКСТ ПРО ВИКУП
                 if (order.paymentType == "buyout") {
                     Box(modifier = Modifier.fillMaxWidth().background(AppColors.Error.copy(alpha = 0.1f), RoundedCornerShape(12.dp)).padding(12.dp)) {
                         Text(
-                            text = "Увага: Ви маєте забрати ${order.price} ₴ у клієнта та повернути їх у заклад після доставки.",
+                            text = "Увага: Заберіть ${order.price} ₴ у клієнта. Повертатися в заклад не потрібно (викуп за власні кошти).",
                             color = AppColors.Error, fontSize = 14.sp, fontWeight = FontWeight.Bold
                         )
                     }
@@ -946,7 +946,6 @@ fun OrderDetailsView(
                 contentPadding = PaddingValues(top = 24.dp, bottom = 100.dp)
             ) {
 
-                // --- НОВИЙ БЛОК: КРАСИВЕ СПОВІЩЕННЯ ПРО ГОТОВНІСТЬ ЗАМОВЛЕННЯ ---
                 if (isOrderReady) {
                     item {
                         Box(modifier = Modifier
@@ -995,12 +994,12 @@ fun OrderDetailsView(
                                 }
                             }
 
-                            // --- ОНОВЛЕННЯ ЛОГІКИ ПІДКАЗОК ДЛЯ КУР'ЄРА ---
+                            // --- ВИПРАВЛЕНО: ТЕКСТИ ДЛЯ ВИКУПУ ---
                             val paymentInfo = when (job.paymentType) {
                                 "prepaid" -> Pair("✅ ОПЛАЧЕНО (Гроші не беремо)", AppColors.Secondary)
                                 "buyout_paid" -> Pair("✅ ОПЛАЧЕНО В ЗАКЛАДі (Свої гроші: ${job.orderPrice} ₴)", AppColors.Secondary)
                                 "cash" -> Pair("💵 ГОТІВКА (Взяти ${job.orderPrice} ₴)", AppColors.Warning)
-                                "buyout" -> Pair("💰 ЗАБЕРІТЬ У КЛІЄНТА: ${job.orderPrice} ₴ (Везіть у заклад)", AppColors.Error)
+                                "buyout" -> Pair("💰 ЗАБЕРІТЬ У КЛІЄНТА: ${job.orderPrice} ₴ (Свої гроші)", AppColors.Error)
                                 else -> Pair("Оплата: ${job.paymentType}", AppColors.Primary)
                             }
 
@@ -1033,7 +1032,6 @@ fun OrderDetailsView(
                                         Box(modifier = Modifier.background(if (isStep1Active) AppColors.Primary.copy(alpha = 0.1f) else Color.Transparent, RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 4.dp)) {
                                             Text("КРОК 1: ЗАКЛАД", fontSize = 12.sp, fontWeight = FontWeight.Black, color = if (isStep1Active) AppColors.Primary else AppColors.TextSecondary, letterSpacing = 1.sp)
                                         }
-                                        // ТАЙМЕР ПУТІ В ЗАКЛАД І ОЧІКУВАННЯ
                                         StepTimer(
                                             startTimeIso = job.assignedAt,
                                             endTimeIso = job.pickedUpAt,
@@ -1096,7 +1094,6 @@ fun OrderDetailsView(
                                         Box(modifier = Modifier.background(if (isStep2Active) AppColors.Primary.copy(alpha = 0.1f) else Color.Transparent, RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 4.dp)) {
                                             Text("КРОК 2: КЛІЄНТ", fontSize = 12.sp, fontWeight = FontWeight.Black, color = if (isStep2Active) AppColors.Primary else AppColors.TextSecondary, letterSpacing = 1.sp)
                                         }
-                                        // ТАЙМЕР ДОСТАВКИ КЛІЄНТУ
                                         StepTimer(
                                             startTimeIso = job.pickedUpAt,
                                             endTimeIso = job.deliveredAt,
@@ -1141,8 +1138,8 @@ fun OrderDetailsView(
                     }
                 }
 
-                // --- КАРТКА ПОВЕРНЕННЯ КОШТІВ ---
-                if ((job.isReturnRequired || job.paymentType == "buyout") && isStep2Done) {
+                // --- ВИПРАВЛЕНО: КАРТКА ПОВЕРНЕННЯ КОШТІВ (ТИЛЬКИ ЯКЩО return_required) ---
+                if (job.isReturnRequired && isStep2Done) {
                     val isStep3Active = job.serverStatus == "returning"
                     item {
                         Card(
@@ -1155,7 +1152,6 @@ fun OrderDetailsView(
                                     Box(modifier = Modifier.background(AppColors.Warning.copy(alpha = 0.1f), RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 4.dp)) {
                                         Text("КРОК 3: ПОВЕРНЕННЯ КОШТІВ", fontSize = 12.sp, fontWeight = FontWeight.Black, color = AppColors.Warning, letterSpacing = 1.sp)
                                     }
-                                    // ТАЙМЕР ПОВЕРНЕННЯ КОШТІВ
                                     StepTimer(
                                         startTimeIso = job.deliveredAt,
                                         endTimeIso = job.completedAt,
@@ -1186,7 +1182,7 @@ fun OrderDetailsView(
             }
         }
 
-        // --- КНОПКА ДІЇ ЗНИЗУ З ПРИКОЛЬНОЮ ТІННЮ ---
+        // --- ВИПРАВЛЕНО: КНОПКА ДІЇ ЗНИЗУ ---
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1198,7 +1194,7 @@ fun OrderDetailsView(
                 "assigned" -> ModernButton("Я в закладі", { isActionLoading = true; onArrivedPickup(job.id) }, Modifier.fillMaxWidth(), backgroundColor = AppColors.Primary, isLoading = isActionLoading)
                 "arrived_pickup", "ready" -> ModernButton("Забрав замовлення", { isActionLoading = true; onUpdateStatus(job.id, "picked_up") }, Modifier.fillMaxWidth(), backgroundColor = AppColors.Secondary, isLoading = isActionLoading)
                 "picked_up" -> {
-                    val btnText = if (job.isReturnRequired || job.paymentType == "buyout") "Забрав гроші (Везу в заклад)" else "Успішно доставлено"
+                    val btnText = if (job.isReturnRequired) "Забрав гроші (Везу в заклад)" else "Успішно доставлено"
                     ModernButton(btnText, { isActionLoading = true; onUpdateStatus(job.id, "delivered") }, Modifier.fillMaxWidth(), backgroundColor = AppColors.Secondary, isLoading = isActionLoading)
                 }
                 "returning" -> ModernButton("Гроші віддав", { Toast.makeText(context, "Чекайте підтвердження від закладу. Заклад має натиснути кнопку у себе в кабінеті.", Toast.LENGTH_LONG).show() }, Modifier.fillMaxWidth(), backgroundColor = AppColors.Warning, isLoading = false)
