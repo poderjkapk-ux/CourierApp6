@@ -2,8 +2,15 @@ package com.restify.courierapp
 
 import android.util.Log
 import com.google.gson.annotations.SerializedName
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -21,7 +28,6 @@ import retrofit2.http.*
 // 1. МОДЕЛІ ДАНИХ (Data Classes)
 // ==========================================
 
-// Модель для списку вільних замовлень
 data class OpenOrder(
     val id: Int,
     @SerializedName("restaurant_name") val restaurantName: String,
@@ -36,25 +42,21 @@ data class OpenOrder(
     val comment: String?
 )
 
-// Відповідь на запит "яке замовлення зараз активне?"
 data class ActiveJobResponse(
     val active: Boolean,
     val job: ActiveJobDetail?
 )
 
-// Детальна інформація про активне замовлення
 data class ActiveJobDetail(
     val id: Int,
     val status: String,
     @SerializedName("server_status") val serverStatus: String,
     @SerializedName("is_ready") val isReady: Boolean,
 
-    // --- ПОЛЯ ДЛЯ ТАЙМЕРІВ ---
     @SerializedName("assigned_at") val assignedAt: String?,
     @SerializedName("picked_up_at") val pickedUpAt: String?,
     @SerializedName("delivered_at") val deliveredAt: String?,
     @SerializedName("completed_at") val completedAt: String?,
-    // ---------------------------------
 
     @SerializedName("partner_name") val partnerName: String,
     @SerializedName("partner_address") val partnerAddress: String,
@@ -71,29 +73,25 @@ data class ActiveJobDetail(
     @SerializedName("is_return_required") val isReturnRequired: Boolean
 )
 
-// Відповідь для простих запитів
 data class StatusResponse(
     val status: String,
     val message: String? = null
 )
 
-// Відповідь для перемикача статусу (онлайн/офлайн)
 data class ToggleResponse(
     @SerializedName("is_online") val isOnline: Boolean
 )
 
-// --- МОДЕЛІ ДЛЯ ЧАТУ ---
 data class ChatMessage(
-    @SerializedName("role") val role: String, // "courier" або "partner"
-    @SerializedName("text") val text: String, // Текст повідомлення
-    @SerializedName("time") val time: String  // Час у форматі HH:mm
+    @SerializedName("role") val role: String,
+    @SerializedName("text") val text: String,
+    @SerializedName("time") val time: String
 )
 
 data class SendMessageResponse(
     val status: String
 )
 
-// --- МОДЕЛЬ ДЛЯ ІСТОРІЇ ЗАМОВЛЕНЬ ---
 data class HistoryOrder(
     val id: Int,
     val date: String,
@@ -102,7 +100,6 @@ data class HistoryOrder(
     val status: String
 )
 
-// --- МОДЕЛЬ ПРОФІЛЮ ---
 data class CourierProfile(
     val id: Int,
     val name: String,
@@ -111,10 +108,9 @@ data class CourierProfile(
     @SerializedName("commission_rate") val commissionRate: Double?,
     val rating: Double?,
     @SerializedName("rating_count") val ratingCount: Int?,
-    @SerializedName("is_online") val isOnline: Boolean // Додано поле для перевірки статусу при старті
+    @SerializedName("is_online") val isOnline: Boolean
 )
 
-// --- НОВІ МОДЕЛІ ДЛЯ РЕЄСТРАЦІЇ ---
 data class VerificationInitResponse(
     val token: String,
     val link: String
@@ -130,7 +126,6 @@ data class RegisterResponse(
     val detail: String?
 )
 
-// --- МОДЕЛЬ ДЛЯ ОНОВЛЕННЯ ДОДАТКУ (IN-APP UPDATE) ---
 data class AppUpdateResponse(
     val success: Boolean,
     val app: String,
@@ -145,7 +140,6 @@ data class AppUpdateResponse(
 
 interface ApiService {
 
-    // ЛОГІН
     @FormUrlEncoded
     @POST("/api/courier/login")
     suspend fun login(
@@ -153,7 +147,6 @@ interface ApiService {
         @Field("password") password: String
     ): retrofit2.Response<ResponseBody>
 
-    // СПИСОК ВІЛЬНИХ ЗАМОВЛЕНЬ
     @GET("/api/courier/open_orders")
     suspend fun getOpenOrders(
         @Header("Cookie") cookie: String,
@@ -161,13 +154,11 @@ interface ApiService {
         @Query("lon") lon: Double
     ): List<OpenOrder>
 
-    // АКТИВНЕ ЗАМОВЛЕННЯ КУР'ЄРА
     @GET("/api/courier/active_job")
     suspend fun getActiveJob(
         @Header("Cookie") cookie: String
     ): ActiveJobResponse
 
-    // ПРИЙНЯТИ ЗАМОВЛЕННЯ
     @FormUrlEncoded
     @POST("/api/courier/accept_order")
     suspend fun acceptOrder(
@@ -175,7 +166,6 @@ interface ApiService {
         @Field("job_id") jobId: Int
     ): retrofit2.Response<StatusResponse>
 
-    // ПРИБУВ У ЗАКЛАД
     @FormUrlEncoded
     @POST("/api/courier/arrived_pickup")
     suspend fun arrivedAtPickup(
@@ -183,7 +173,6 @@ interface ApiService {
         @Field("job_id") jobId: Int
     ): StatusResponse
 
-    // ОНОВЛЕННЯ СТАТУСУ (picked_up, delivered)
     @FormUrlEncoded
     @POST("/api/courier/update_job_status")
     suspend fun updateJobStatus(
@@ -192,7 +181,6 @@ interface ApiService {
         @Field("status") status: String
     ): StatusResponse
 
-    // ВІДПРАВКА GPS-КООРДИНАТ
     @FormUrlEncoded
     @POST("/api/courier/location")
     suspend fun sendLocation(
@@ -201,7 +189,6 @@ interface ApiService {
         @Field("lon") lon: Double
     ): StatusResponse
 
-    // ВІДПРАВКА FIREBASE ТОКЕНА
     @FormUrlEncoded
     @POST("/api/courier/fcm_token")
     suspend fun sendFcmToken(
@@ -209,22 +196,17 @@ interface ApiService {
         @Field("token") token: String
     ): StatusResponse
 
-    // ПЕРЕКЛЮЧИТИ СТАТУС ОНЛАЙН/ОФЛАЙН
     @POST("/api/courier/toggle_status")
     suspend fun toggleStatus(
         @Header("Cookie") cookie: String
     ): ToggleResponse
 
-    // --- МЕТОДИ ЧАТУ ---
-
-    // ОТРИМАТИ ІСТОРІЮ ЧАТУ ЗА ID ЗАМОВЛЕННЯ
     @GET("/api/chat/history/{job_id}")
     suspend fun getChatMessages(
         @Header("Cookie") cookie: String,
         @Path("job_id") jobId: Int
     ): List<ChatMessage>
 
-    // ВІДПРАВИТИ ПОВІДОМЛЕННЯ В ЧАТ
     @FormUrlEncoded
     @POST("/api/chat/send")
     suspend fun sendChatMessage(
@@ -234,19 +216,16 @@ interface ApiService {
         @Field("role") role: String = "courier"
     ): SendMessageResponse
 
-    // --- МЕТОД ДЛЯ ІСТОРІЇ ЗАМОВЛЕНЬ ---
     @GET("/api/courier/history")
     suspend fun getHistory(
         @Header("Cookie") cookie: String
     ): List<HistoryOrder>
 
-    // --- МЕТОД: ОТРИМАТИ ПРОФІЛЬ КУР'ЄРА ---
     @GET("/api/courier/profile")
     suspend fun getProfile(
         @Header("Cookie") cookie: String
     ): CourierProfile
 
-    // --- НОВІ МЕТОДИ ДЛЯ РЕЄСТРАЦІЇ ---
     @POST("/api/auth/init_verification")
     suspend fun initVerification(): retrofit2.Response<VerificationInitResponse>
 
@@ -265,23 +244,38 @@ interface ApiService {
         @Part selfiePhoto: MultipartBody.Part
     ): retrofit2.Response<RegisterResponse>
 
-    // --- ЕНДПОІНТ ДЛЯ ПЕРЕВІРКИ ОНОВЛЕНЬ ---
     @GET("/api/check-update/courier")
     suspend fun checkUpdate(): retrofit2.Response<AppUpdateResponse>
 }
 
 // ==========================================
-// 3. МЕНЕДЖЕР WEBSOCKET
+// 3. МЕНЕДЖЕР WEBSOCKET З АВТО-РЕКОНЕКТОМ ТА ПІНГОМ
 // ==========================================
 
 class WebSocketManager(private val client: OkHttpClient) {
     private var webSocket: WebSocket? = null
 
-    // Flow для прослуховування вхідних повідомлень (JSON рядків) у UI
+    // Flow для прослуховування вхідних повідомлень у UI
     private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 10)
     val messages = _messages.asSharedFlow()
 
+    private var currentCookie: String? = null
+    private var isIntentionallyClosed = false
+
+    // Корутина для фонового пінгу
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private var pingJob: Job? = null
+
     fun connect(cookie: String) {
+        currentCookie = cookie
+        isIntentionallyClosed = false
+        startConnection()
+    }
+
+    private fun startConnection() {
+        if (webSocket != null) return
+        val cookie = currentCookie ?: return
+
         val request = Request.Builder()
             .url("wss://restify.site/ws/courier")
             .addHeader("Cookie", cookie)
@@ -290,6 +284,7 @@ class WebSocketManager(private val client: OkHttpClient) {
         webSocket = client.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 Log.d("WebSocket", "Connected")
+                startPingJob()
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
@@ -301,12 +296,50 @@ class WebSocketManager(private val client: OkHttpClient) {
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 Log.d("WebSocket", "Closed: $reason")
+                this@WebSocketManager.webSocket = null
+                stopPingJob()
+
+                // Якщо закрили не ми (наприклад обірвався інтернет) - пробуємо підняти знову
+                if (!isIntentionallyClosed && code != 1008) {
+                    scheduleReconnect()
+                }
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 Log.e("WebSocket", "Error", t)
+                this@WebSocketManager.webSocket = null
+                stopPingJob()
+
+                if (!isIntentionallyClosed) {
+                    scheduleReconnect()
+                }
             }
         })
+    }
+
+    private fun startPingJob() {
+        pingJob?.cancel()
+        pingJob = scope.launch {
+            while (isActive) {
+                delay(15000) // Шлемо пінг кожні 15 секунд
+                sendPing()
+            }
+        }
+    }
+
+    private fun stopPingJob() {
+        pingJob?.cancel()
+        pingJob = null
+    }
+
+    private fun scheduleReconnect() {
+        scope.launch {
+            delay(5000) // Чекаємо 5 секунд перед спробою реконекту
+            if (!isIntentionallyClosed && webSocket == null) {
+                Log.d("WebSocket", "Attempting to reconnect...")
+                startConnection()
+            }
+        }
     }
 
     fun sendLocation(lat: Double, lon: Double) {
@@ -319,12 +352,16 @@ class WebSocketManager(private val client: OkHttpClient) {
     }
 
     fun sendPing() {
-        webSocket?.send(JSONObject().apply { put("type", "ping") }.toString())
+        // Відправляємо просту строку "ping", як це очікує сервер
+        webSocket?.send("ping")
     }
 
     fun disconnect() {
+        isIntentionallyClosed = true
+        stopPingJob()
         webSocket?.close(1000, "App closed/Logout")
         webSocket = null
+        currentCookie = null
     }
 }
 
