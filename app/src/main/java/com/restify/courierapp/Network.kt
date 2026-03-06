@@ -130,6 +130,15 @@ data class RegisterResponse(
     val detail: String?
 )
 
+// --- МОДЕЛЬ ДЛЯ ОНОВЛЕННЯ ДОДАТКУ (IN-APP UPDATE) ---
+data class AppUpdateResponse(
+    val success: Boolean,
+    val app: String,
+    @SerializedName("latest_version_code") val latestVersionCode: Int,
+    @SerializedName("latest_version_name") val latestVersionName: String,
+    @SerializedName("download_url") val downloadUrl: String
+)
+
 // ==========================================
 // 2. ІНТЕРФЕЙС API (Retrofit)
 // ==========================================
@@ -255,6 +264,10 @@ interface ApiService {
         @Part documentPhoto: MultipartBody.Part,
         @Part selfiePhoto: MultipartBody.Part
     ): retrofit2.Response<RegisterResponse>
+
+    // --- ЕНДПОІНТ ДЛЯ ПЕРЕВІРКИ ОНОВЛЕНЬ ---
+    @GET("/api/check-update/courier")
+    suspend fun checkUpdate(): retrofit2.Response<AppUpdateResponse>
 }
 
 // ==========================================

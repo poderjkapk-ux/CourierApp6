@@ -2,11 +2,17 @@ package com.restify.courierapp
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.AlertDialog
+import android.app.DownloadManager
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.location.Location
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -17,6 +23,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.core.content.FileProvider
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -29,6 +37,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import org.json.JSONObject
 import org.osmdroid.config.Configuration
+import java.io.File
 import kotlin.coroutines.resume
 
 class MainActivity : ComponentActivity() {
@@ -58,6 +67,9 @@ class MainActivity : ComponentActivity() {
     @OptIn(ExperimentalPermissionsApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // --- ПЕРЕВІРКА ОНОВЛЕНЬ ---
+        checkForUpdates()
 
         // Ініціалізація OpenStreetMap (потрібно для відображення карти)
         Configuration.getInstance().userAgentValue = packageName
@@ -458,6 +470,104 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+        }
+    }
+
+    // --- ЛОГІКА IN-APP ОНОВЛЕНЬ ---
+
+    private fun checkForUpdates() {
+        lifecycleScope.launch {
+            try {
+                // Зверни увагу: викликаємо checkUpdate() з RetrofitClient.apiService
+                val response = RetrofitClient.apiService.checkUpdate()
+                if (response.isSuccessful && response.body() != null) {
+                    val updateData = response.body()!!
+
+                    // Отримуємо поточну версію додатка
+                    val packageInfo = packageManager.getPackageInfo(packageName, 0)
+                    val currentVersionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        packageInfo.longVersionCode.toInt()
+                    } else {
+                        packageInfo.versionCode
+                    }
+
+                    // Якщо на сервері версія більша, пропонуємо оновити
+                    if (updateData.latestVersionCode > currentVersionCode) {
+                        showUpdateDialog(updateData.downloadUrl, updateData.latestVersionName)
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Помилка перевірки оновлень: ${e.message}")
+            }
+        }
+    }
+
+    private fun showUpdateDialog(downloadUrl: String, versionName: String) {
+        AlertDialog.Builder(this@MainActivity)
+            .setTitle("Доступне оновлення")
+            .setMessage("Вийшла нова версія додатку ($versionName). Будь ласка, оновіть його для стабільної роботи.")
+            .setPositiveButton("Оновити") { _, _ ->
+                downloadAndInstallApk(downloadUrl)
+            }
+            .setNegativeButton("Пізніше", null)
+            .setCancelable(false)
+            .show()
+    }
+
+    private fun downloadAndInstallApk(apkUrl: String) {
+        Toast.makeText(this, "Завантаження почалося...", Toast.LENGTH_SHORT).show()
+
+        val fileName = "restify_courier_update.apk"
+        val downloadManager = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        val uri = Uri.parse(apkUrl)
+
+        val request = DownloadManager.Request(uri)
+            .setTitle("Оновлення Restify Courier")
+            .setDescription("Завантаження нової версії...")
+            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+            .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
+
+        // Видаляємо старий файл оновлення, якщо він там залишився
+        val file = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), fileName)
+        if (file.exists()) file.delete()
+
+        val downloadId = downloadManager.enqueue(request)
+
+        // Слухаємо, коли завантаження завершиться, щоб запустити встановлення
+        val onComplete = object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                val id = intent?.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)
+                if (id == downloadId) {
+                    installApk(file)
+                    unregisterReceiver(this)
+                }
+            }
+        }
+
+        // Використовуємо RECEIVER_EXPORTED, бо системне повідомлення приходить ззовні
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(onComplete, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE), Context.RECEIVER_EXPORTED)
+        } else {
+            registerReceiver(onComplete, IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE))
+        }
+    }
+
+    private fun installApk(apkFile: File) {
+        try {
+            val apkUri = FileProvider.getUriForFile(
+                this,
+                "${applicationContext.packageName}.provider",
+                apkFile
+            )
+
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(apkUri, "application/vnd.android.package-archive")
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION
+            }
+            startActivity(intent)
+        } catch (e: Exception) {
+            Log.e("MainActivity", "Помилка встановлення APK: ${e.message}")
+            Toast.makeText(this, "Не вдалося відкрити інсталятор", Toast.LENGTH_LONG).show()
         }
     }
 }
