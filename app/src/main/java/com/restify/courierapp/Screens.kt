@@ -297,8 +297,16 @@ fun LoginScreen(
     isLoading: Boolean,
     errorMessage: String?
 ) {
+    val coroutineScope = rememberCoroutineScope()
     var phone by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+
+    // --- СТАН ДЛЯ МОДАЛКИ СКИДАННЯ ПАРОЛЯ ---
+    var showResetDialog by remember { mutableStateOf(false) }
+    var resetPhone by remember { mutableStateOf("") }
+    var isResetLoading by remember { mutableStateOf(false) }
+    var resetMessage by remember { mutableStateOf<String?>(null) }
+    var isResetSuccess by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -333,7 +341,7 @@ fun LoginScreen(
                 Text("Вхід для кур'єра", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = AppColors.TextPrimary)
                 Spacer(modifier = Modifier.height(28.dp))
 
-                ModernTextField(value = phone, onValueChange = { phone = it }, label = "Номер телефону", keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone))
+                ModernTextField(value = phone, onValueChange = { phone = it }, label = "Номер тел. (починаючи 380)", keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone))
                 Spacer(modifier = Modifier.height(16.dp))
                 ModernTextField(value = password, onValueChange = { password = it }, label = "Пароль", visualTransformation = PasswordVisualTransformation())
 
@@ -352,12 +360,98 @@ fun LoginScreen(
                 Spacer(modifier = Modifier.height(36.dp))
                 ModernButton(text = "Увійти", onClick = { onLoginClick(phone, password) }, modifier = Modifier.fillMaxWidth(), isLoading = isLoading, enabled = phone.isNotBlank() && password.isNotBlank(), icon = Icons.Default.ArrowForward)
 
+                // --- КНОПКА ЗАБУЛИ ПАРОЛЬ ---
                 Spacer(modifier = Modifier.height(16.dp))
+                TextButton(onClick = { showResetDialog = true }) {
+                    Text("Забули пароль?", color = AppColors.TextSecondary, fontWeight = FontWeight.SemiBold)
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
                 TextButton(onClick = onNavigateToRegister) {
                     Text("Немає акаунту? Зареєструватися", color = AppColors.Primary, fontWeight = FontWeight.SemiBold)
                 }
             }
         }
+    }
+
+    // --- МОДАЛЬНЕ ВІКНО СКИДАННЯ ПАРОЛЯ ---
+    if (showResetDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!isResetLoading) showResetDialog = false },
+            title = { Text("Відновлення пароля", fontWeight = FontWeight.Bold, color = AppColors.TextPrimary) },
+            text = {
+                Column {
+                    Text("Введіть номер телефону. Новий пароль буде надіслано вам у Telegram.", fontSize = 14.sp, color = AppColors.TextSecondary)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    ModernTextField(
+                        value = resetPhone,
+                        onValueChange = { resetPhone = it },
+                        label = "Номер тел. (починаючи 380)",
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone)
+                    )
+                    if (resetMessage != null) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = resetMessage!!,
+                            color = if (isResetSuccess) AppColors.Secondary else AppColors.Error,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (resetPhone.isBlank()) {
+                            resetMessage = "❌ Введіть номер телефону"
+                            isResetSuccess = false
+                            return@Button
+                        }
+                        coroutineScope.launch {
+                            isResetLoading = true
+                            resetMessage = null
+                            try {
+                                val res = RetrofitClient.apiService.resetCourierPassword(resetPhone)
+                                if (res.isSuccessful) {
+                                    isResetSuccess = true
+                                    resetMessage = "✅ Новий пароль надіслано в Telegram!"
+                                    delay(3000)
+                                    showResetDialog = false
+                                    resetMessage = null
+                                    resetPhone = ""
+                                } else {
+                                    isResetSuccess = false
+                                    val errorBody = res.errorBody()?.string()
+                                    val detail = try { JSONObject(errorBody ?: "").getString("detail") } catch (e: Exception) { "Помилка скидання" }
+                                    resetMessage = "❌ $detail"
+                                }
+                            } catch (e: Exception) {
+                                isResetSuccess = false
+                                resetMessage = "❌ Помилка мережі"
+                            } finally {
+                                isResetLoading = false
+                            }
+                        }
+                    },
+                    enabled = !isResetLoading,
+                    colors = ButtonDefaults.buttonColors(containerColor = AppColors.Primary)
+                ) {
+                    if (isResetLoading) {
+                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    } else {
+                        Text("Надіслати")
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetDialog = false }, enabled = !isResetLoading) {
+                    Text("Скасувати", color = AppColors.TextSecondary)
+                }
+            },
+            containerColor = AppColors.Surface,
+            shape = RoundedCornerShape(20.dp)
+        )
     }
 }
 

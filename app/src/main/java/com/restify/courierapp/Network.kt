@@ -147,6 +147,14 @@ interface ApiService {
         @Field("password") password: String
     ): retrofit2.Response<ResponseBody>
 
+    // --- НОВИЙ МЕТОД ДЛЯ СКЫДАННЯ ПАРОЛЯ ---
+    @FormUrlEncoded
+    @POST("/api/courier/reset_password")
+    suspend fun resetCourierPassword(
+        @Field("phone") phone: String
+    ): retrofit2.Response<StatusResponse>
+    // ----------------------------------------
+
     @GET("/api/courier/open_orders")
     suspend fun getOpenOrders(
         @Header("Cookie") cookie: String,
