@@ -3,6 +3,7 @@ package com.restify.courierapp
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -604,6 +605,7 @@ fun prepareFilePart(context: Context, partName: String, fileUri: Uri): Multipart
 fun OrdersListScreen(
     orders: List<OpenOrder>,
     isOnline: Boolean,
+    isGpsEnabled: Boolean, // Додано параметр статусу GPS
     onToggleStatus: (Boolean) -> Unit,
     onAcceptOrder: (Int) -> Unit,
     onRefresh: () -> Unit,
@@ -611,6 +613,8 @@ fun OrdersListScreen(
     onNavigateToProfile: () -> Unit,
     isLoading: Boolean
 ) {
+    val context = LocalContext.current // Додано для Intent до налаштувань
+
     Scaffold(
         containerColor = AppColors.Background,
         topBar = {
@@ -641,16 +645,52 @@ fun OrdersListScreen(
             )
         }
     ) { padding ->
-        PullToRefreshBox(isRefreshing = isLoading, onRefresh = onRefresh, modifier = Modifier.fillMaxSize().padding(padding)) {
-            if (orders.isEmpty() && !isLoading) {
-                Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-                    Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(80.dp))
-                    Spacer(modifier = Modifier.height(20.dp))
-                    Text("Зараз немає замовлень", color = AppColors.TextSecondary, fontSize = 18.sp, fontWeight = FontWeight.Medium)
+        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+
+            // --- КРАСИВИЙ БАНЕР: ПРОХАННЯ УВІМКНУТИ GPS ---
+            if (!isGpsEnabled) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                        .shadow(4.dp, RoundedCornerShape(16.dp)),
+                    colors = CardDefaults.cardColors(containerColor = AppColors.Warning.copy(alpha = 0.15f)),
+                    border = BorderStroke(1.dp, AppColors.Warning),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Outlined.Info, contentDescription = null, tint = AppColors.Warning, modifier = Modifier.size(32.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Геолокацію вимкнено", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = AppColors.TextPrimary)
+                            Text("Увімкніть GPS, щоб бачити реальну відстань до замовлень, а не 5000 км 😉", fontSize = 13.sp, color = AppColors.TextSecondary, lineHeight = 16.sp)
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Button(
+                            onClick = { context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)) },
+                            colors = ButtonDefaults.buttonColors(containerColor = AppColors.Warning),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text("Увімкнути", color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                    }
                 }
-            } else {
-                LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                    items(orders) { order -> OrderCard(order = order, onAcceptClick = onAcceptOrder) }
+            }
+
+            PullToRefreshBox(isRefreshing = isLoading, onRefresh = onRefresh, modifier = Modifier.weight(1f)) {
+                if (orders.isEmpty() && !isLoading) {
+                    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(80.dp))
+                        Spacer(modifier = Modifier.height(20.dp))
+                        Text("Зараз немає замовлень", color = AppColors.TextSecondary, fontSize = 18.sp, fontWeight = FontWeight.Medium)
+                    }
+                } else {
+                    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                        items(orders) { order -> OrderCard(order = order, onAcceptClick = onAcceptOrder) }
+                    }
                 }
             }
         }

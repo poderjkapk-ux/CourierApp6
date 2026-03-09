@@ -9,10 +9,12 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.location.Location
+import android.location.LocationManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Environment
+import android.provider.Settings
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -23,7 +25,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.FileProvider
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -250,6 +256,22 @@ class MainActivity : ComponentActivity() {
 
                             val currentCookie = sharedPref.getString("cookie", "") ?: ""
 
+                            // --- СТАН ДЛЯ ВІДСТЕЖЕННЯ УВІМКНЕНОГО GPS ---
+                            val context = LocalContext.current
+                            val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
+                            var isGpsEnabled by remember { mutableStateOf(true) }
+
+                            val lifecycleOwner = LocalLifecycleOwner.current
+                            DisposableEffect(lifecycleOwner) {
+                                val observer = LifecycleEventObserver { _, event ->
+                                    if (event == Lifecycle.Event.ON_RESUME) {
+                                        isGpsEnabled = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)
+                                    }
+                                }
+                                lifecycleOwner.lifecycle.addObserver(observer)
+                                onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+                            }
+
                             // параметри для "тихого" оновлення
                             fun fetchData(isSilent: Boolean = false) {
                                 if (!isSilent) isLoading = true
@@ -263,9 +285,9 @@ class MainActivity : ComponentActivity() {
                                             return@launch
                                         }
 
-                                        // Отримуємо реальні координати
-                                        var currentLat = 0.0
-                                        var currentLon = 0.0
+                                        // Отримуємо реальні координати (замість нулів - Центр Одеси)
+                                        var currentLat = 46.4825
+                                        var currentLon = 30.7233
 
                                         if (permissionsState.allPermissionsGranted) {
                                             val location = getLastKnownLocation()
@@ -342,6 +364,7 @@ class MainActivity : ComponentActivity() {
                                 orders = ordersList,
                                 isLoading = isLoading,
                                 isOnline = isOnline,
+                                isGpsEnabled = isGpsEnabled, // ПЕРЕДАЄМО СТАТУС GPS НА ЕКРАН
                                 onNavigateToHistory = {
                                     navController.navigate("history")
                                 },
