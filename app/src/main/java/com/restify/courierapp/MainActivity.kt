@@ -33,6 +33,7 @@ import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
 import com.google.firebase.messaging.FirebaseMessaging
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import org.json.JSONObject
@@ -89,8 +90,21 @@ class MainActivity : ComponentActivity() {
                     val coroutineScope = rememberCoroutineScope()
                     val savedCookie = sharedPref.getString("cookie", null)
 
-                    // ГЛОБАЛЬНАЯ ПЕРЕМЕННАЯ СТАТУСА: Теперь статус не теряется при переходах!
+                    // ГЛОБАЛЬНА ЗМІННА СТАТУСУ: Тепер статус не втрачається при переходах!
                     var isOnline by rememberSaveable { mutableStateOf(false) }
+
+                    // --- Глобальна функція для примусового логауту при помилці 401 ---
+                    fun forceLogout() {
+                        coroutineScope.launch(Dispatchers.Main) {
+                            sharedPref.edit().remove("cookie").apply()
+                            RetrofitClient.webSocketManager.disconnect()
+                            stopService(Intent(this@MainActivity, LocationTracker::class.java))
+                            Toast.makeText(this@MainActivity, "Сесія закінчилась, увійдіть знову", Toast.LENGTH_LONG).show()
+                            navController.navigate("login") {
+                                popUpTo(0) { inclusive = true }
+                            }
+                        }
+                    }
 
                     // --- Управління життєвим циклом WebSocket та FCM-токеном ---
                     LaunchedEffect(Unit) {
@@ -98,7 +112,7 @@ class MainActivity : ComponentActivity() {
                             // Підключаємо WebSocket
                             RetrofitClient.webSocketManager.connect(savedCookie)
 
-                            // ОНОВЛЕННЯ: Відправляємо FCM-токен на сервер при кожному старті додатку
+                            // Відправляємо FCM-токен на сервер при кожному старті додатку
                             FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
                                 if (task.isSuccessful) {
                                     val token = task.result
@@ -135,13 +149,18 @@ class MainActivity : ComponentActivity() {
 
                     val permissionsState = rememberMultiplePermissionsState(permissions = permissionsToRequest)
 
-                    // Запитуємо дозволи при старті
-                    LaunchedEffect(permissionsState.allPermissionsGranted) {
+                    // --- Глобальний контроль GPS: автоматично запускаємо/зупиняємо сервіс при зміні isOnline або дозволів ---
+                    LaunchedEffect(permissionsState.allPermissionsGranted, isOnline) {
                         if (!permissionsState.allPermissionsGranted) {
                             permissionsState.launchMultiplePermissionRequest()
+                        } else {
+                            // Дозволи є. Запускаємо або зупиняємо сервіс залежно від статусу
+                            if (isOnline) {
+                                startLocationService()
+                            } else {
+                                stopService(Intent(this@MainActivity, LocationTracker::class.java))
+                            }
                         }
-                        // Ми більше НЕ запускаємо тут GPS всліпу.
-                        // GPS буде запущено тільки якщо сервер підтвердить, що кур'єр онлайн.
                     }
 
                     val startDestination = if (savedCookie != null) "orders" else "login"
@@ -251,8 +270,14 @@ class MainActivity : ComponentActivity() {
                                         if (permissionsState.allPermissionsGranted) {
                                             val location = getLastKnownLocation()
                                             if (location != null) {
-                                                currentLat = location.latitude
-                                                currentLon = location.longitude
+                                                // --- ЗАХИСТ ВІД РЕБ (GPS SPOOFING) ---
+                                                // Одеська область приблизно в межах Lat 45.0 - 48.0 та Lon 29.0 - 32.0
+                                                if (location.latitude > 45.0 && location.latitude < 48.0 && location.longitude > 29.0 && location.longitude < 32.0) {
+                                                    currentLat = location.latitude
+                                                    currentLon = location.longitude
+                                                } else {
+                                                    Log.w("GPS_FILTER", "РЕБ або збій! Фейкова локація проігнорована: ${location.latitude}, ${location.longitude}")
+                                                }
                                             }
                                         }
 
@@ -261,6 +286,12 @@ class MainActivity : ComponentActivity() {
                                             lat = currentLat,
                                             lon = currentLon
                                         )
+                                    } catch (e: retrofit2.HttpException) {
+                                        if (e.code() == 401 || e.code() == 403) {
+                                            forceLogout()
+                                        } else if (!isSilent) {
+                                            Toast.makeText(this@MainActivity, "Помилка завантаження", Toast.LENGTH_SHORT).show()
+                                        }
                                     } catch (e: Exception) {
                                         if (!isSilent) Toast.makeText(this@MainActivity, "Помилка завантаження", Toast.LENGTH_SHORT).show()
                                     } finally {
@@ -274,12 +305,9 @@ class MainActivity : ComponentActivity() {
                                 coroutineScope.launch {
                                     try {
                                         val profile = RetrofitClient.apiService.getProfile(currentCookie)
-                                        isOnline = profile.isOnline // Отримуємо правдивий статус
-
-                                        // Запускаємо GPS тільки якщо сервер сказав, що ми на смені
-                                        if (isOnline && permissionsState.allPermissionsGranted) {
-                                            startLocationService()
-                                        }
+                                        isOnline = profile.isOnline // Це автоматично запустить/зупинить LocationTracker через глобальний LaunchedEffect
+                                    } catch (e: retrofit2.HttpException) {
+                                        if (e.code() == 401 || e.code() == 403) forceLogout()
                                     } catch (e: Exception) {
                                         Log.e("SYNC", "Не вдалося отримати профіль для перевірки статусу")
                                     }
@@ -287,10 +315,10 @@ class MainActivity : ComponentActivity() {
                                 fetchData(isSilent = false)
                             }
 
-                            // Фонове тихе оновлення (Збільшено до 30 секунд як fallback)
+                            // Фонове тихе оновлення
                             LaunchedEffect(Unit) {
                                 while (true) {
-                                    kotlinx.coroutines.delay(30000) // <--- ЗМІНЕНО: тепер 30 секунд замість 5
+                                    kotlinx.coroutines.delay(30000)
                                     fetchData(isSilent = true)
                                 }
                             }
@@ -325,15 +353,12 @@ class MainActivity : ComponentActivity() {
                                         try {
                                             // Відправляємо запит на зміну статусу
                                             val response = RetrofitClient.apiService.toggleStatus(currentCookie)
-                                            isOnline = response.isOnline // Ставимо статус, який повернув сервер
-
-                                            if (isOnline) {
-                                                if (permissionsState.allPermissionsGranted) {
-                                                    startLocationService()
-                                                }
+                                            isOnline = response.isOnline // Глобальний LaunchedEffect сам ввімкне/вимкне GPS
+                                        } catch (e: retrofit2.HttpException) {
+                                            if (e.code() == 401 || e.code() == 403) {
+                                                forceLogout()
                                             } else {
-                                                val serviceIntent = Intent(this@MainActivity, LocationTracker::class.java)
-                                                stopService(serviceIntent)
+                                                Toast.makeText(this@MainActivity, "Помилка зв'язку з сервером", Toast.LENGTH_SHORT).show()
                                             }
                                         } catch (e: Exception) {
                                             Toast.makeText(this@MainActivity, "Помилка зв'язку з сервером", Toast.LENGTH_SHORT).show()
@@ -363,6 +388,8 @@ class MainActivity : ComponentActivity() {
                                         val res = RetrofitClient.apiService.getActiveJob(currentCookie)
                                         if (res.active && res.job != null) activeJob = res.job
                                         else navController.navigate("orders") { popUpTo("active_order") { inclusive = true } }
+                                    } catch (e: retrofit2.HttpException) {
+                                        if (e.code() == 401 || e.code() == 403) forceLogout()
                                     } catch (e: Exception) {}
                                 }
                             }
@@ -413,6 +440,8 @@ class MainActivity : ComponentActivity() {
                                 coroutineScope.launch {
                                     try {
                                         historyList = RetrofitClient.apiService.getHistory(currentCookie)
+                                    } catch (e: retrofit2.HttpException) {
+                                        if (e.code() == 401 || e.code() == 403) forceLogout()
                                     } catch (e: Exception) {
                                         Toast.makeText(this@MainActivity, "Помилка завантаження історії", Toast.LENGTH_SHORT).show()
                                     } finally {
@@ -441,6 +470,8 @@ class MainActivity : ComponentActivity() {
                                 coroutineScope.launch {
                                     try {
                                         profileData = RetrofitClient.apiService.getProfile(currentCookie)
+                                    } catch (e: retrofit2.HttpException) {
+                                        if (e.code() == 401 || e.code() == 403) forceLogout()
                                     } catch (e: Exception) {
                                         Toast.makeText(this@MainActivity, "Помилка завантаження профілю", Toast.LENGTH_SHORT).show()
                                     } finally {
@@ -453,17 +484,7 @@ class MainActivity : ComponentActivity() {
                                 profile = profileData,
                                 isLoading = isLoading,
                                 onBack = { navController.popBackStack() },
-                                onLogout = {
-                                    // Логіка виходу
-                                    sharedPref.edit().remove("cookie").apply()
-                                    RetrofitClient.webSocketManager.disconnect()
-                                    // Зупиняємо GPS трекер, якщо він працює
-                                    stopService(Intent(this@MainActivity, LocationTracker::class.java))
-
-                                    navController.navigate("login") {
-                                        popUpTo(0) { inclusive = true } // Очищаємо весь стек
-                                    }
-                                }
+                                onLogout = { forceLogout() }
                             )
                         }
 
@@ -478,7 +499,6 @@ class MainActivity : ComponentActivity() {
     private fun checkForUpdates() {
         lifecycleScope.launch {
             try {
-                // Зверни увагу: викликаємо checkUpdate() з RetrofitClient.apiService
                 val response = RetrofitClient.apiService.checkUpdate()
                 if (response.isSuccessful && response.body() != null) {
                     val updateData = response.body()!!

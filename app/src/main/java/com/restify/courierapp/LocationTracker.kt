@@ -62,6 +62,16 @@ class LocationTracker : Service() {
     }
 
     private fun sendLocationToServer(lat: Double, lon: Double) {
+        // --- ЗАХИСТ ВІД РЕБ (GPS SPOOFING) ---
+        // Одеська область приблизно в межах Lat 45.0 - 48.0 та Lon 29.0 - 32.0
+        val isRealLocation = (lat > 45.0 && lat < 48.0) && (lon > 29.0 && lon < 32.0)
+
+        if (!isRealLocation) {
+            Log.w("LocationTracker", "РЕБ DETECTED! Фейкова локація проігнорована: $lat, $lon")
+            return // Перериваємо відправку, чекаємо наступного оновлення GPS
+        }
+        // -------------------------------------
+
         val sharedPref = getSharedPreferences("CourierPrefs", Context.MODE_PRIVATE)
         val cookie = sharedPref.getString("cookie", null)
 
