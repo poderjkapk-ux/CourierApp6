@@ -1,4 +1,3 @@
-
 package com.restify.courierapp
 
 import android.Manifest
@@ -551,17 +550,19 @@ class MainActivity : ComponentActivity() {
             .setTitle("Доступне оновлення")
             .setMessage("Вийшла нова версія додатку ($versionName). Будь ласка, оновіть його для стабільної роботи.")
             .setPositiveButton("Оновити") { _, _ ->
-                downloadAndInstallApk(downloadUrl)
+                // Передаем версию в функцию скачивания
+                downloadAndInstallApk(downloadUrl, versionName)
             }
             .setNegativeButton("Пізніше", null)
             .setCancelable(false)
             .show()
     }
 
-    private fun downloadAndInstallApk(apkUrl: String) {
+    private fun downloadAndInstallApk(apkUrl: String, versionName: String) {
         Toast.makeText(this, "Завантаження почалося...", Toast.LENGTH_SHORT).show()
 
-        val fileName = "restify_courier_update.apk"
+        // Добавляем версию в имя файла, чтобы избежать ошибки перезаписи
+        val fileName = "restify_courier_update_$versionName.apk"
         val downloadManager = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
         val uri = Uri.parse(apkUrl)
 
@@ -571,7 +572,7 @@ class MainActivity : ComponentActivity() {
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
             .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
 
-        // Видаляємо старий файл оновлення, якщо він там залишився
+        // Видаляємо старий файл оновлення з таким же іменем, якщо він там залишився
         val file = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS), fileName)
         if (file.exists()) file.delete()
 
