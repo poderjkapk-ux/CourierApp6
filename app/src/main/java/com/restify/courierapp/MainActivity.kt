@@ -8,6 +8,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationManager
 import android.net.Uri
@@ -27,6 +28,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.FileProvider
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -35,6 +37,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
+import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
@@ -50,6 +53,7 @@ import kotlin.coroutines.resume
 class MainActivity : ComponentActivity() {
 
     private lateinit var fusedLocationClient: FusedLocationProviderClient
+    private var updateReceiver: BroadcastReceiver? = null // Зберігаємо ресивер для запобігання витоку пам'яті
 
     // Функція для запуску служби геолокації
     private fun startLocationService() {
@@ -66,8 +70,17 @@ class MainActivity : ComponentActivity() {
     suspend fun getLastKnownLocation(): Location? {
         return suspendCancellableCoroutine { cont ->
             fusedLocationClient.lastLocation
-                .addOnSuccessListener { location -> cont.resume(location) }
-                .addOnFailureListener { cont.resume(null) }
+                .addOnSuccessListener { location ->
+                    // ЗАХИСТ ВІД КРАШУ: Перевіряємо, чи корутина ще активна перед тим як повернути результат
+                    if (cont.isActive) {
+                        cont.resume(location)
+                    }
+                }
+                .addOnFailureListener {
+                    if (cont.isActive) {
+                        cont.resume(null)
+                    }
+                }
         }
     }
 
@@ -155,17 +168,28 @@ class MainActivity : ComponentActivity() {
 
                     val permissionsState = rememberMultiplePermissionsState(permissions = permissionsToRequest)
 
-                    // --- Глобальний контроль GPS: автоматично запускаємо/зупиняємо сервіс при зміні isOnline або дозволів ---
-                    LaunchedEffect(permissionsState.allPermissionsGranted, isOnline) {
+                    // Перевіряємо чи є хоча б якийсь дозвіл на локацію (щоб відмова від пушів не блокувала роботу)
+                    val hasLocationPermission = permissionsState.permissions.any {
+                        (it.permission == Manifest.permission.ACCESS_FINE_LOCATION ||
+                                it.permission == Manifest.permission.ACCESS_COARSE_LOCATION) &&
+                                it.status.isGranted
+                    }
+
+                    // --- Глобальний контроль GPS: автоматично запускаємо/зупиняємо сервіс ---
+                    LaunchedEffect(permissionsState.allPermissionsGranted, isOnline, hasLocationPermission) {
                         if (!permissionsState.allPermissionsGranted) {
                             permissionsState.launchMultiplePermissionRequest()
-                        } else {
-                            // Дозволи є. Запускаємо або зупиняємо сервіс залежно від статусу
+                        }
+
+                        // Запускаємо сервіс, якщо є дозвіл САМЕ на локацію, незалежно від дозволу на сповіщення
+                        if (hasLocationPermission) {
                             if (isOnline) {
                                 startLocationService()
                             } else {
                                 stopService(Intent(this@MainActivity, LocationTracker::class.java))
                             }
+                        } else if (!isOnline) {
+                            stopService(Intent(this@MainActivity, LocationTracker::class.java))
                         }
                     }
 
@@ -265,7 +289,13 @@ class MainActivity : ComponentActivity() {
                             DisposableEffect(lifecycleOwner) {
                                 val observer = LifecycleEventObserver { _, event ->
                                     if (event == Lifecycle.Event.ON_RESUME) {
-                                        isGpsEnabled = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)
+                                        // ВИПРАВЛЕНО: Більш точна перевірка для сучасних Android (враховує економію енергії)
+                                        isGpsEnabled = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                                            locationManager.isLocationEnabled
+                                        } else {
+                                            locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
+                                                    locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+                                        }
                                     }
                                 }
                                 lifecycleOwner.lifecycle.addObserver(observer)
@@ -289,7 +319,7 @@ class MainActivity : ComponentActivity() {
                                         var currentLat = 46.4825
                                         var currentLon = 30.7233
 
-                                        if (permissionsState.allPermissionsGranted) {
+                                        if (hasLocationPermission) {
                                             val location = getLastKnownLocation()
                                             if (location != null) {
                                                 // --- ЗАХИСТ ВІД РЕБ (GPS SPOOFING) ---
@@ -584,10 +614,17 @@ class MainActivity : ComponentActivity() {
                 val id = intent?.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)
                 if (id == downloadId) {
                     installApk(file)
-                    unregisterReceiver(this)
+                    try {
+                        unregisterReceiver(this)
+                    } catch (e: Exception) {
+                        Log.e("MainActivity", "Помилка при знятті ресивера: ${e.message}")
+                    }
                 }
             }
         }
+
+        // Зберігаємо посилання на ресивер у класі, щоб зняти його в onDestroy, якщо активність закриють
+        updateReceiver = onComplete
 
         // Використовуємо RECEIVER_EXPORTED, бо системне повідомлення приходить ззовні
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -613,6 +650,18 @@ class MainActivity : ComponentActivity() {
         } catch (e: Exception) {
             Log.e("MainActivity", "Помилка встановлення APK: ${e.message}")
             Toast.makeText(this, "Не вдалося відкрити інсталятор", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        // ВИПРАВЛЕНО: Знімаємо ресивер, щоб запобігти витоку пам'яті (Memory Leak), якщо активність знищено під час завантаження
+        updateReceiver?.let {
+            try {
+                unregisterReceiver(it)
+            } catch (e: Exception) {
+                Log.e("MainActivity", "Ресивер вже був знятий або не зареєстрований: ${e.message}")
+            }
         }
     }
 }

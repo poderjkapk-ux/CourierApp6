@@ -680,12 +680,15 @@ fun RegistrationScreen(onRegisterSuccess: () -> Unit, onBackToLogin: () -> Unit)
     }
 }
 
+// ВИПРАВЛЕНО: Додано .use { } для автоматичного закриття потоків і запобігання витоку файлових дескрипторів
 fun prepareFilePart(context: Context, partName: String, fileUri: Uri): MultipartBody.Part? {
     return try {
-        val inputStream: InputStream? = context.contentResolver.openInputStream(fileUri)
         val tempFile = File(context.cacheDir, "${partName}_temp.jpg")
-        val outputStream = FileOutputStream(tempFile)
-        inputStream?.copyTo(outputStream)
+        context.contentResolver.openInputStream(fileUri)?.use { inputStream ->
+            FileOutputStream(tempFile).use { outputStream ->
+                inputStream.copyTo(outputStream)
+            }
+        } ?: return null
         val requestFile = RequestBody.create(MediaType.parse("image/*"), tempFile)
         MultipartBody.Part.createFormData(partName, tempFile.name, requestFile)
     } catch (e: Exception) { null }
@@ -1054,7 +1057,8 @@ fun OrderDetailsView(
             if (intent.resolveActivity(context.packageManager) != null) {
                 context.startActivity(intent)
             } else {
-                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://maps.google.com/?q=${Uri.encode(address)}")))
+                // ВИПРАВЛЕНО: Правильне веб-посилання на Google Карти
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/maps/search/?api=1&query=${Uri.encode(address)}")))
             }
         } catch (e: Exception) {
             Toast.makeText(context, "Помилка відкриття карт", Toast.LENGTH_SHORT).show()

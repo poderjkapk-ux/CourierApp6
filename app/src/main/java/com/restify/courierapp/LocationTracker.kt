@@ -7,6 +7,7 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.os.Looper
@@ -44,7 +45,15 @@ class LocationTracker : Service() {
     @SuppressLint("MissingPermission") // Дозволи ми будемо запитувати в MainActivity
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         // Запускаємо службу на передньому плані (з постійним сповіщенням)
-        startForeground(NOTIFICATION_ID, createNotification())
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(
+                NOTIFICATION_ID,
+                createNotification(),
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, createNotification())
+        }
 
         // Налаштовуємо частоту оновлення GPS (кожні 10-15 секунд)
         val locationRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 15000)
