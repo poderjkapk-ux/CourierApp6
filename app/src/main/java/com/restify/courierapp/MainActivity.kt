@@ -419,12 +419,23 @@ class MainActivity : ComponentActivity() {
                                     }
                                 },
                                 onRefresh = { fetchData(isSilent = false) },
-                                onAcceptOrder = { jobId ->
+                                onAcceptOrder = { jobId, onComplete -> // <--- ВИПРАВЛЕНО ТУТ: додано onComplete
                                     coroutineScope.launch {
                                         try {
                                             val res = RetrofitClient.apiService.acceptOrder(currentCookie, jobId)
-                                            if (res.isSuccessful) fetchData(isSilent = false)
-                                        } catch (e: Exception) {}
+                                            if (res.isSuccessful) {
+                                                fetchData(isSilent = false)
+                                            } else {
+                                                // Замовлення вже забрали, сервер повернув помилку
+                                                Toast.makeText(this@MainActivity, "Замовлення вже забрали", Toast.LENGTH_LONG).show()
+                                                fetchData(isSilent = false)
+                                            }
+                                        } catch (e: Exception) {
+                                            Toast.makeText(this@MainActivity, "Помилка зв'язку з сервером", Toast.LENGTH_SHORT).show()
+                                        } finally {
+                                            // <--- ВИПРАВЛЕНО ТУТ: зупиняємо крутилку в будь-якому випадку (навіть при помилці)
+                                            onComplete()
+                                        }
                                     }
                                 }
                             )

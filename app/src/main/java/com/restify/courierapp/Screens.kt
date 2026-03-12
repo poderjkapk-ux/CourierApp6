@@ -704,7 +704,7 @@ fun OrdersListScreen(
     isOnline: Boolean,
     isGpsEnabled: Boolean, // Додано параметр статусу GPS
     onToggleStatus: (Boolean) -> Unit,
-    onAcceptOrder: (Int) -> Unit,
+    onAcceptOrder: (Int, () -> Unit) -> Unit, // <--- ИЗМЕНЕНО: Добавлен колбэк для остановки спиннера
     onRefresh: () -> Unit,
     onNavigateToHistory: () -> Unit,
     onNavigateToProfile: () -> Unit,
@@ -796,7 +796,7 @@ fun OrdersListScreen(
 
 // ОНОВЛЕНА КАРТКА ЗАМОВЛЕННЯ З ПЛАВНИМ РОЗГОРТАННЯМ
 @Composable
-fun OrderCard(order: OpenOrder, onAcceptClick: (Int) -> Unit) {
+fun OrderCard(order: OpenOrder, onAcceptClick: (Int, () -> Unit) -> Unit) { // <--- ИЗМЕНЕНО: Добавлен колбэк
     var isAccepting by remember { mutableStateOf(false) }
     var expanded by remember { mutableStateOf(false) }
 
@@ -904,7 +904,10 @@ fun OrderCard(order: OpenOrder, onAcceptClick: (Int) -> Unit) {
                         text = "Прийняти",
                         onClick = {
                             isAccepting = true
-                            onAcceptClick(order.id)
+                            // <--- ИЗМЕНЕНО: Остановка загрузки по завершении запроса
+                            onAcceptClick(order.id) {
+                                isAccepting = false
+                            }
                         },
                         modifier = Modifier.height(48.dp).width(140.dp),
                         backgroundColor = AppColors.Primary,
@@ -1603,8 +1606,9 @@ fun ProfileScreen(
                             ProfileStatItem("Рейтинг", profile.rating?.toString() ?: "5.0", AppColors.Warning)
                             Box(modifier = Modifier.width(1.dp).height(40.dp).background(Color.LightGray.copy(alpha = 0.5f)))
 
-                            // БАЛАНС
-                            ProfileStatItem("Баланс", "${profile.balance ?: 0.0} ₴", AppColors.Secondary)
+                            // <--- ИЗМЕНЕНО: БАЛАНС
+                            val balanceInt = profile.balance?.toInt() ?: 0
+                            ProfileStatItem("Баланс", "$balanceInt ₴", AppColors.Secondary)
                         }
                     }
 
