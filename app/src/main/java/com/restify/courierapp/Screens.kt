@@ -7,9 +7,13 @@ import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -28,14 +32,17 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowForward
 import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Place
@@ -87,6 +94,7 @@ object AppColors {
     val TextPrimary = Color(0xFF0F172A)
     val TextSecondary = Color(0xFF64748B)
     val Error = Color(0xFFEF4444)
+    val Info = Color(0xFF3B82F6) // Приємний синій для інформаційних оголошень
     val ChatBubbleSelf = Color(0xFF1E293B)
     val ChatTextSelf = Color.White
     val ChatBubbleOther = Color(0xFFF1F5F9)
@@ -283,6 +291,72 @@ fun StepTimer(
             fontWeight = FontWeight.Black,
             letterSpacing = 1.sp
         )
+    }
+}
+
+// ==========================================
+// КОМПОНЕНТ КАРТКИ ОГОЛОШЕННЯ (Announcement)
+// ==========================================
+
+@Composable
+fun AnnouncementCard(
+    announcement: Announcement,
+    onDismiss: (Int) -> Unit
+) {
+    // Мапінг стилів з бекенду на кольори та іконки
+    val (bgColor, contentColor, icon) = when (announcement.style) {
+        "danger" -> Triple(AppColors.Error.copy(alpha = 0.15f), AppColors.Error, Icons.Default.Warning)
+        "warning" -> Triple(AppColors.Warning.copy(alpha = 0.15f), Color(0xFFB45309), Icons.Default.Warning)
+        "success" -> Triple(AppColors.Secondary.copy(alpha = 0.15f), AppColors.Secondary, Icons.Rounded.CheckCircle)
+        else -> Triple(AppColors.Info.copy(alpha = 0.15f), AppColors.Info, Icons.Default.Info) // info за замовчуванням
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(4.dp, RoundedCornerShape(16.dp), spotColor = contentColor.copy(alpha = 0.3f)),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = bgColor),
+        border = BorderStroke(1.dp, contentColor.copy(alpha = 0.3f))
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = contentColor,
+                modifier = Modifier.size(28.dp).padding(top = 2.dp)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = announcement.title,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontSize = 16.sp,
+                    color = AppColors.TextPrimary
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = announcement.message,
+                    fontSize = 14.sp,
+                    color = AppColors.TextPrimary.copy(alpha = 0.8f),
+                    lineHeight = 18.sp
+                )
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            IconButton(
+                onClick = { onDismiss(announcement.id) },
+                modifier = Modifier.size(24.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Закрити",
+                    tint = contentColor.copy(alpha = 0.7f)
+                )
+            }
+        }
     }
 }
 
@@ -701,10 +775,12 @@ fun prepareFilePart(context: Context, partName: String, fileUri: Uri): Multipart
 @Composable
 fun OrdersListScreen(
     orders: List<OpenOrder>,
+    announcements: List<Announcement>, // ДОДАНО
     isOnline: Boolean,
     isGpsEnabled: Boolean, // Додано параметр статусу GPS
     onToggleStatus: (Boolean) -> Unit,
-    onAcceptOrder: (Int, () -> Unit) -> Unit, // <--- ИЗМЕНЕНО: Добавлен колбэк для остановки спиннера
+    onAcceptOrder: (Int, () -> Unit) -> Unit,
+    onDismissAnnouncement: (Int) -> Unit, // ДОДАНО
     onRefresh: () -> Unit,
     onNavigateToHistory: () -> Unit,
     onNavigateToProfile: () -> Unit,
@@ -778,14 +854,39 @@ fun OrdersListScreen(
             }
 
             PullToRefreshBox(isRefreshing = isLoading, onRefresh = onRefresh, modifier = Modifier.weight(1f)) {
-                if (orders.isEmpty() && !isLoading) {
+                if (orders.isEmpty() && announcements.isEmpty() && !isLoading) { // ОНОВЛЕНО: Враховуємо оголошення
                     Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
                         Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(80.dp))
                         Spacer(modifier = Modifier.height(20.dp))
                         Text("Зараз немає замовлень", color = AppColors.TextSecondary, fontSize = 18.sp, fontWeight = FontWeight.Medium)
                     }
                 } else {
-                    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        // --- ДОДАНО БЛОК ОГОЛОШЕНЬ ---
+                        if (announcements.isNotEmpty()) {
+                            item {
+                                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    announcements.forEach { ann ->
+                                        AnimatedVisibility(
+                                            visible = true,
+                                            exit = fadeOut(tween(300)) + shrinkVertically(tween(300))
+                                        ) {
+                                            AnnouncementCard(
+                                                announcement = ann,
+                                                onDismiss = onDismissAnnouncement
+                                            )
+                                        }
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(8.dp))
+                            }
+                        }
+                        // ------------------------------------
+
                         items(orders) { order -> OrderCard(order = order, onAcceptClick = onAcceptOrder) }
                     }
                 }
@@ -796,7 +897,7 @@ fun OrdersListScreen(
 
 // ОНОВЛЕНА КАРТКА ЗАМОВЛЕННЯ З ПЛАВНИМ РОЗГОРТАННЯМ
 @Composable
-fun OrderCard(order: OpenOrder, onAcceptClick: (Int, () -> Unit) -> Unit) { // <--- ИЗМЕНЕНО: Добавлен колбэк
+fun OrderCard(order: OpenOrder, onAcceptClick: (Int, () -> Unit) -> Unit) {
     var isAccepting by remember { mutableStateOf(false) }
     var expanded by remember { mutableStateOf(false) }
 
@@ -904,7 +1005,6 @@ fun OrderCard(order: OpenOrder, onAcceptClick: (Int, () -> Unit) -> Unit) { // <
                         text = "Прийняти",
                         onClick = {
                             isAccepting = true
-                            // <--- ИЗМЕНЕНО: Остановка загрузки по завершении запроса
                             onAcceptClick(order.id) {
                                 isAccepting = false
                             }

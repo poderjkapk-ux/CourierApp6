@@ -276,6 +276,7 @@ class MainActivity : ComponentActivity() {
                         // РОУТ 2: СПИСОК ЗАМОВЛЕНЬ
                         composable("orders") {
                             var ordersList by remember { mutableStateOf<List<OpenOrder>>(emptyList()) }
+                            var announcementsList by remember { mutableStateOf<List<Announcement>>(emptyList()) }
                             var isLoading by remember { mutableStateOf(true) }
 
                             val currentCookie = sharedPref.getString("cookie", "") ?: ""
@@ -313,6 +314,13 @@ class MainActivity : ComponentActivity() {
                                                 popUpTo("orders") { inclusive = true }
                                             }
                                             return@launch
+                                        }
+
+                                        // Завантажуємо оголошення
+                                        try {
+                                            announcementsList = RetrofitClient.apiService.getAnnouncements(currentCookie)
+                                        } catch (e: Exception) {
+                                            Log.e("Announcements", "Failed to load announcements: ${e.message}")
                                         }
 
                                         // Отримуємо реальні координати (замість нулів - Центр Одеси)
@@ -392,6 +400,7 @@ class MainActivity : ComponentActivity() {
 
                             OrdersListScreen(
                                 orders = ordersList,
+                                announcements = announcementsList,
                                 isLoading = isLoading,
                                 isOnline = isOnline,
                                 isGpsEnabled = isGpsEnabled, // ПЕРЕДАЄМО СТАТУС GPS НА ЕКРАН
@@ -400,6 +409,18 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onNavigateToProfile = {
                                     navController.navigate("profile") // Перехід на екран профілю
+                                },
+                                onDismissAnnouncement = { annId ->
+                                    // Оптимістичне оновлення UI (одразу приховуємо оголошення)
+                                    announcementsList = announcementsList.filter { it.id != annId }
+                                    // Відправляємо запит на бекенд у фоні
+                                    coroutineScope.launch {
+                                        try {
+                                            RetrofitClient.apiService.dismissAnnouncement(currentCookie, annId)
+                                        } catch (e: Exception) {
+                                            Log.e("Announcements", "Failed to dismiss: ${e.message}")
+                                        }
+                                    }
                                 },
                                 onToggleStatus = { _ -> // Ігноруємо UI статус, довіряємо бекенду
                                     coroutineScope.launch {
@@ -419,7 +440,7 @@ class MainActivity : ComponentActivity() {
                                     }
                                 },
                                 onRefresh = { fetchData(isSilent = false) },
-                                onAcceptOrder = { jobId, onComplete -> // <--- ВИПРАВЛЕНО ТУТ: додано onComplete
+                                onAcceptOrder = { jobId, onComplete ->
                                     coroutineScope.launch {
                                         try {
                                             val res = RetrofitClient.apiService.acceptOrder(currentCookie, jobId)
@@ -433,7 +454,7 @@ class MainActivity : ComponentActivity() {
                                         } catch (e: Exception) {
                                             Toast.makeText(this@MainActivity, "Помилка зв'язку з сервером", Toast.LENGTH_SHORT).show()
                                         } finally {
-                                            // <--- ВИПРАВЛЕНО ТУТ: зупиняємо крутилку в будь-якому випадку (навіть при помилці)
+                                            // зупиняємо крутилку в будь-якому випадку (навіть при помилці)
                                             onComplete()
                                         }
                                     }

@@ -28,6 +28,13 @@ import retrofit2.http.*
 // 1. МОДЕЛІ ДАНИХ (Data Classes)
 // ==========================================
 
+data class Announcement(
+    val id: Int,
+    val title: String,
+    val message: String,
+    val style: String
+)
+
 data class OpenOrder(
     val id: Int,
     @SerializedName("restaurant_name") val restaurantName: String,
@@ -147,13 +154,11 @@ interface ApiService {
         @Field("password") password: String
     ): retrofit2.Response<ResponseBody>
 
-    // --- НОВИЙ МЕТОД ДЛЯ СКЫДАННЯ ПАРОЛЯ ---
     @FormUrlEncoded
     @POST("/api/courier/reset_password")
     suspend fun resetCourierPassword(
         @Field("phone") phone: String
     ): retrofit2.Response<StatusResponse>
-    // ----------------------------------------
 
     @GET("/api/courier/open_orders")
     suspend fun getOpenOrders(
@@ -254,6 +259,19 @@ interface ApiService {
 
     @GET("/api/check-update/courier")
     suspend fun checkUpdate(): retrofit2.Response<AppUpdateResponse>
+
+    // --- СИСТЕМА ОГОЛОШЕНЬ ---
+    @GET("/api/courier/announcements")
+    suspend fun getAnnouncements(
+        @Header("Cookie") cookie: String
+    ): List<Announcement>
+
+    @POST("/api/courier/announcements/{ann_id}/dismiss")
+    suspend fun dismissAnnouncement(
+        @Header("Cookie") cookie: String,
+        @Path("ann_id") annId: Int
+    ): StatusResponse
+    // -------------------------
 }
 
 // ==========================================
