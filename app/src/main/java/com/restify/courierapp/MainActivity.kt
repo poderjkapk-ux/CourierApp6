@@ -286,24 +286,8 @@ class MainActivity : ComponentActivity() {
                             val locationManager = context.getSystemService(Context.LOCATION_SERVICE) as LocationManager
                             var isGpsEnabled by remember { mutableStateOf(true) }
 
-                            val lifecycleOwner = LocalLifecycleOwner.current
-                            DisposableEffect(lifecycleOwner) {
-                                val observer = LifecycleEventObserver { _, event ->
-                                    if (event == Lifecycle.Event.ON_RESUME) {
-                                        // ВИПРАВЛЕНО: Більш точна перевірка для сучасних Android (враховує економію енергії)
-                                        isGpsEnabled = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                                            locationManager.isLocationEnabled
-                                        } else {
-                                            locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
-                                                    locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
-                                        }
-                                    }
-                                }
-                                lifecycleOwner.lifecycle.addObserver(observer)
-                                onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-                            }
-
                             // параметри для "тихого" оновлення
+                            // ФУНКЦІЯ ПІДНЯТА ВГОРУ, щоб її бачив LifecycleEventObserver
                             fun fetchData(isSilent: Boolean = false) {
                                 if (!isSilent) isLoading = true
                                 coroutineScope.launch {
@@ -358,6 +342,25 @@ class MainActivity : ComponentActivity() {
                                         if (!isSilent) isLoading = false
                                     }
                                 }
+                            }
+
+                            val lifecycleOwner = LocalLifecycleOwner.current
+                            DisposableEffect(lifecycleOwner) {
+                                val observer = LifecycleEventObserver { _, event ->
+                                    if (event == Lifecycle.Event.ON_RESUME) {
+                                        // ВИПРАВЛЕНО: Більш точна перевірка для сучасних Android (враховує економію енергії)
+                                        isGpsEnabled = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                                            locationManager.isLocationEnabled
+                                        } else {
+                                            locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER) ||
+                                                    locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+                                        }
+                                        // ДОДАНО: Примусове оновлення при розгортанні
+                                        fetchData(isSilent = true)
+                                    }
+                                }
+                                lifecycleOwner.lifecycle.addObserver(observer)
+                                onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
                             }
 
                             // При відкритті екрану завантажуємо реальний профіль і статус
@@ -477,6 +480,18 @@ class MainActivity : ComponentActivity() {
                                         if (e.code() == 401 || e.code() == 403) forceLogout()
                                     } catch (e: Exception) {}
                                 }
+                            }
+
+                            // ДОДАНО: Спостерігач за життєвим циклом для екрану активного замовлення
+                            val lifecycleOwner = LocalLifecycleOwner.current
+                            DisposableEffect(lifecycleOwner) {
+                                val observer = LifecycleEventObserver { _, event ->
+                                    if (event == Lifecycle.Event.ON_RESUME) {
+                                        fetchActiveJob()
+                                    }
+                                }
+                                lifecycleOwner.lifecycle.addObserver(observer)
+                                onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
                             }
 
                             LaunchedEffect(Unit) { fetchActiveJob() }
