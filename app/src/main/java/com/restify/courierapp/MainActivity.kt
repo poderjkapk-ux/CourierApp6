@@ -193,9 +193,28 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    val startDestination = if (savedCookie != null) "orders" else "login"
+                    // Визначаємо стартовий екран з урахуванням онбордингу
+                    val startDestination = if (isFirstLaunch()) {
+                        "onboarding"
+                    } else if (savedCookie != null) {
+                        "orders"
+                    } else {
+                        "login"
+                    }
 
                     NavHost(navController = navController, startDestination = startDestination) {
+
+                        // РОУТ 0: ОНБОРДИНГ
+                        composable("onboarding") {
+                            OnboardingScreen(
+                                onFinish = {
+                                    setFirstLaunchCompleted()
+                                    navController.navigate("login") {
+                                        popUpTo("onboarding") { inclusive = true }
+                                    }
+                                }
+                            )
+                        }
 
                         // РОУТ 1: ЛОГІН
                         composable("login") {
@@ -710,5 +729,16 @@ class MainActivity : ComponentActivity() {
                 Log.e("MainActivity", "Ресивер вже був знятий або не зареєстрований: ${e.message}")
             }
         }
+    }
+
+    // --- ФУНКЦІЇ ДЛЯ КОНТРОЛЮ ПЕРШОГО ЗАПУСКУ (ОНБОРДИНГ) ---
+    private fun isFirstLaunch(): Boolean {
+        val sharedPreferences = getSharedPreferences("CourierPrefs", Context.MODE_PRIVATE)
+        return sharedPreferences.getBoolean("isFirstLaunch", true)
+    }
+
+    private fun setFirstLaunchCompleted() {
+        val sharedPreferences = getSharedPreferences("CourierPrefs", Context.MODE_PRIVATE)
+        sharedPreferences.edit().putBoolean("isFirstLaunch", false).apply()
     }
 }
