@@ -294,6 +294,116 @@ fun StepTimer(
     }
 }
 
+// --- КОМПАКТНЫЙ ТАЙМЕР ДЛЯ СПИСКА ЗАКАЗОВ ---
+@Composable
+fun ReadinessBadge(readyAtIso: String?, isReady: Boolean, modifier: Modifier = Modifier) {
+    if (isReady) {
+        Box(modifier = modifier.background(AppColors.Secondary.copy(alpha = 0.15f), RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 6.dp)) {
+            Text("✅ Вже готово", color = AppColors.Secondary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+        }
+        return
+    }
+    if (readyAtIso.isNullOrEmpty()) return
+
+    var timeDiff by remember { mutableLongStateOf(0L) }
+
+    LaunchedEffect(readyAtIso) {
+        while (true) {
+            try {
+                val readyInstant = Instant.parse(readyAtIso)
+                val now = Instant.now()
+                timeDiff = Duration.between(now, readyInstant).seconds
+            } catch (e: Exception) {}
+            delay(1000L)
+        }
+    }
+
+    val isLate = timeDiff < 0
+    val absDiff = kotlin.math.abs(timeDiff)
+    val m = absDiff / 60
+    val s = absDiff % 60
+    val timeString = String.format("%02d:%02d", m, s)
+
+    val bgColor = if (isLate) AppColors.Error.copy(alpha = 0.15f) else if (m < 5) AppColors.Warning.copy(alpha = 0.15f) else AppColors.Primary.copy(alpha = 0.1f)
+    val textColor = if (isLate) AppColors.Error else if (m < 5) Color(0xFFB45309) else AppColors.Primary
+    val icon = if (isLate) "🔥" else if (m < 5) "⏳" else "🕒"
+    val textPrefix = if (isLate) "Запізнення" else if (m < 5) "Майже готово" else "Готується"
+
+    Box(
+        modifier = modifier
+            .background(bgColor, RoundedCornerShape(8.dp))
+            .padding(horizontal = 10.dp, vertical = 6.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(icon, fontSize = 14.sp)
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = "$textPrefix $timeString",
+                color = textColor,
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp
+            )
+        }
+    }
+}
+
+// --- БОЛЬШОЙ ТАЙМЕР ДЛЯ АКТИВНОГО ЗАКАЗА ---
+@Composable
+fun LargeReadinessTimer(readyAtIso: String?) {
+    if (readyAtIso.isNullOrEmpty()) return
+
+    var timeDiff by remember { mutableLongStateOf(0L) }
+
+    LaunchedEffect(readyAtIso) {
+        while (true) {
+            try {
+                val readyInstant = Instant.parse(readyAtIso)
+                val now = Instant.now()
+                timeDiff = Duration.between(now, readyInstant).seconds
+            } catch (e: Exception) {}
+            delay(1000L)
+        }
+    }
+
+    val isLate = timeDiff < 0
+    val absDiff = kotlin.math.abs(timeDiff)
+    val m = absDiff / 60
+    val s = absDiff % 60
+    val timeString = String.format("%02d:%02d", m, s)
+
+    val bgColor = if (isLate) AppColors.Error else AppColors.Primary
+    val titleText = if (isLate) "ЗАКЛАД ЗАТРИМУЄ ВИДАЧУ" else "ОЧІКУВАНИЙ ЧАС ВИДАЧІ"
+    val subtitleText = if (isLate) "Замовлення вже мало бути готовим" else "Ресторан ще готує страви"
+
+    Box(modifier = Modifier
+        .fillMaxWidth()
+        .shadow(12.dp, RoundedCornerShape(20.dp), spotColor = bgColor.copy(alpha = 0.4f))
+        .background(Brush.horizontalGradient(listOf(bgColor, bgColor.copy(alpha = 0.8f))), RoundedCornerShape(20.dp))
+        .padding(20.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier.size(56.dp).background(Color.White.copy(alpha = 0.2f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(if (isLate) Icons.Default.Warning else Icons.Default.Info, contentDescription = null, tint = Color.White, modifier = Modifier.size(32.dp))
+            }
+            Spacer(modifier = Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(titleText, fontWeight = FontWeight.Black, color = Color.White, fontSize = 13.sp, letterSpacing = 0.5.sp)
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(subtitleText, color = Color.White.copy(alpha = 0.9f), fontSize = 13.sp, fontWeight = FontWeight.Medium)
+            }
+            Text(
+                text = "${if(isLate) "-" else ""}$timeString",
+                fontWeight = FontWeight.Black,
+                fontSize = 28.sp,
+                color = Color.White
+            )
+        }
+    }
+}
+
 // ==========================================
 // КОМПОНЕНТ КАРТКИ ОГОЛОШЕННЯ (Announcement)
 // ==========================================
@@ -962,6 +1072,13 @@ fun OrderCard(order: OpenOrder, onAcceptClick: (Int, () -> Unit) -> Unit) {
                 )
             }
 
+            // --- ДОДАНО ТАЙМЕР ---
+            if (order.readyAt != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                ReadinessBadge(readyAtIso = order.readyAt, isReady = false)
+            }
+            // ---------------------
+
             // ДЕТАЛЬНА ЧАСТИНА (ВІДЧИНЯЄТЬСЯ)
             if (expanded) {
                 Spacer(modifier = Modifier.height(16.dp))
@@ -1211,6 +1328,12 @@ fun OrderDetailsView(
                             }
                         }
                     }
+                } else if (isStep1Active && !job.readyAt.isNullOrEmpty()) {
+                    // --- ДОДАНО ВЕЛИКИЙ ТАЙМЕР ---
+                    item {
+                        LargeReadinessTimer(job.readyAt)
+                    }
+                    // -----------------------------
                 }
 
                 // --- ФІНАНСИ ТА ОПЛАТА ---
