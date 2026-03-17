@@ -47,7 +47,7 @@ data class OpenOrder(
     @SerializedName("payment_type") val paymentType: String,
     @SerializedName("is_return") val isReturn: Boolean,
     val comment: String?,
-    @SerializedName("ready_at") val readyAt: String? // ДОДАНО ПОЛЕ ТАЙМЕРА
+    @SerializedName("estimated_ready_at") val readyAt: String? // ВИПРАВЛЕНО ДЛЯ ТАЙМЕРА
 )
 
 data class ActiveJobResponse(
@@ -60,7 +60,7 @@ data class ActiveJobDetail(
     val status: String,
     @SerializedName("server_status") val serverStatus: String,
     @SerializedName("is_ready") val isReady: Boolean,
-    @SerializedName("ready_at") val readyAt: String?, // ДОДАНО ПОЛЕ ТАЙМЕРА
+    @SerializedName("estimated_ready_at") val readyAt: String?, // ВИПРАВЛЕНО ДЛЯ ТАЙМЕРА
 
     @SerializedName("assigned_at") val assignedAt: String?,
     @SerializedName("picked_up_at") val pickedUpAt: String?,
