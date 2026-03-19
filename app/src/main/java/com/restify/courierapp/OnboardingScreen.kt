@@ -18,10 +18,10 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.CheckCircle
-import androidx.compose.material.icons.outlined.Email
-import androidx.compose.material.icons.outlined.List
-import androidx.compose.material.icons.outlined.LocationOn
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Email
+import androidx.compose.material.icons.rounded.List
+import androidx.compose.material.icons.rounded.LocationOn
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -48,25 +48,25 @@ val onboardingPages = listOf(
     OnboardingPage(
         title = "Ваш робочий інструмент",
         description = "Вітаємо в Restify Courier! Тут ви отримуєте нові замовлення, бачите свій заробіток та керуєте всіма етапами доставки в єдиному зручному вікні.",
-        icon = Icons.Outlined.LocationOn,
+        icon = Icons.Rounded.LocationOn,
         iconTint = Color(0xFF8A2BE2) // Фіолетовий
     ),
     OnboardingPage(
         title = "Деталі та Оплата",
         description = "Уважно перевіряйте інформацію перед прийняттям заявки. Звертайте особливу увагу на тип розрахунку: чи це звичайна передплата, чи вам потрібно викупити замовлення в закладі власними коштами.",
-        icon = Icons.Outlined.List,
+        icon = Icons.Rounded.List,
         iconTint = Color(0xFF00C853) // Зелений
     ),
     OnboardingPage(
         title = "Керування статусами",
         description = "Ваша ефективність залежить від своєчасного оновлення статусів. Відзначайте своє прибуття до закладу, момент отримання страв та факт передачі замовлення клієнту в один дотик.",
-        icon = Icons.Outlined.CheckCircle,
+        icon = Icons.Rounded.CheckCircle,
         iconTint = Color(0xFF2979FF) // Синій
     ),
     OnboardingPage(
         title = "Зв'язок із закладом",
         description = "Виникли питання щодо замовлення чи затримуєтесь в дорозі? Використовуйте зручний внутрішній чат для швидкого зв'язку з адміністратором ресторану без переходу в інші додатки.",
-        icon = Icons.Outlined.Email,
+        icon = Icons.Rounded.Email,
         iconTint = Color(0xFFFF8F00) // Помаранчевий
     )
 )
