@@ -32,6 +32,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -112,15 +113,35 @@ class MainActivity : ComponentActivity() {
                     // ГЛОБАЛЬНА ЗМІННА СТАТУСУ: Тепер статус не втрачається при переходах!
                     var isOnline by rememberSaveable { mutableStateOf(false) }
 
-                    // --- Глобальна функція для примусового логауту при помилці 401 ---
-                    fun forceLogout() {
-                        coroutineScope.launch(Dispatchers.Main) {
-                            sharedPref.edit().remove("cookie").apply()
-                            RetrofitClient.webSocketManager.disconnect()
-                            stopService(Intent(this@MainActivity, LocationTracker::class.java))
-                            Toast.makeText(this@MainActivity, "Сесія закінчилась, увійдіть знову", Toast.LENGTH_LONG).show()
-                            navController.navigate("login") {
-                                popUpTo(0) { inclusive = true }
+                    // --- Глобальна функція для примусового логауту або виходу з акаунту ---
+                    fun forceLogout(isExplicitLogout: Boolean = false) {
+                        coroutineScope.launch(Dispatchers.IO) {
+                            val currentCookie = sharedPref.getString("cookie", null)
+
+                            // Якщо курьєр натиснув "Вийти" і він зараз онлайн — перемикаємо статус на сервері
+                            if (isExplicitLogout && currentCookie != null && isOnline) {
+                                try {
+                                    RetrofitClient.apiService.toggleStatus(currentCookie)
+                                } catch (e: Exception) {
+                                    Log.e("Logout", "Не вдалося переключити статус на бекенді")
+                                }
+                            }
+
+                            // Повертаємось у головний потік для оновлення UI
+                            launch(Dispatchers.Main) {
+                                isOnline = false // Обов'язково скидаємо локальний стан!
+                                sharedPref.edit().remove("cookie").apply()
+                                RetrofitClient.webSocketManager.disconnect()
+                                stopService(Intent(this@MainActivity, LocationTracker::class.java))
+
+                                // Показуємо тост тільки якщо це викид (наприклад, 401), а не добровільний вихід
+                                if (!isExplicitLogout) {
+                                    Toast.makeText(this@MainActivity, "Сесія закінчилась, увійдіть знову", Toast.LENGTH_LONG).show()
+                                }
+
+                                navController.navigate("login") {
+                                    popUpTo(0) { inclusive = true }
+                                }
                             }
                         }
                     }
@@ -603,7 +624,7 @@ class MainActivity : ComponentActivity() {
                                 profile = profileData,
                                 isLoading = isLoading,
                                 onBack = { navController.popBackStack() },
-                                onLogout = { forceLogout() }
+                                onLogout = { forceLogout(isExplicitLogout = true) }
                             )
                         }
 
